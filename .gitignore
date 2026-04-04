@@ -1,0 +1,53 @@
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local envs
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor/OS
+.DS_Store
+
+# Agent/tool config (local)
+.claude/
+
+# Project-specific files (not part of the public env)
+sac_agent.py
+safety_layer.py
+train.py
+train_rl.py
+emgr_reward.py
+emgr_planner.py
+calibrate_emgr.py
+eval_rl.py
+eval_curriculum.py
+tune_alpha.py
+run_planner.py
+training_monitor.py
+training_viz.py
+realtime_viz.py
+plot_publication.py
+plot_temperature_profile.py
+verify_install.py
+create_isaac_sim.sh
+baseline_log.txt
+best_alpha.json
+diagnostics.png
+puff_concentration_slice.png
+emgr_mle_rl_formulation.log
+physics_summary.tex
+wind_field_method.tex
+environment.yml
+checkpoints/
+eval_results/
+planner_baseline/
+figures/
+paper_results/

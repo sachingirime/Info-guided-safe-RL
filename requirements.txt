@@ -1,0 +1,4 @@
+numpy
+gymnasium>=1.0
+matplotlib
+warp-lang>=1.0
