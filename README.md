@@ -1,4 +1,4 @@
-# Warp Gas Plume Gym Environment
+# NVIDIA Warp Gas Plume Gym Environment
 
 A GPU-accelerated [Gymnasium](https://gymnasium.farama.org/) environment for **drone-based gas source localization** in 3D turbulent wind fields.
 
