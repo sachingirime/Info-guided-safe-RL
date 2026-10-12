@@ -169,6 +169,67 @@ def normal_cuboid(p: wp.vec3, center: wp.vec3, half_extents: wp.vec3):
     else:               n[2] = wp.sign(p[2]-center[2])
     return n
 
+# ── Line-of-sight tests (exact segment–primitive intersection) ──────────────
+# Used to occlude puffs whose centre is not visible from the sample point
+# (same approximation as GADEN's filament-centre line-of-sight test).
+
+@wp.func
+def seg_hits_sphere(p0: wp.vec3, p1: wp.vec3, c: wp.vec3, r: float):
+    d = p1 - p0
+    t = wp.clamp(wp.dot(c - p0, d) / wp.max(wp.dot(d, d), 1.0e-9), 0.0, 1.0)
+    return wp.length(p0 + t * d - c) < r
+
+@wp.func
+def seg_hits_box(p0: wp.vec3, p1: wp.vec3, c: wp.vec3, h: wp.vec3):
+    # Slab test on the segment parameter t ∈ [0, 1]
+    d = p1 - p0
+    tmin = float(0.0)
+    tmax = float(1.0)
+    hit = int(1)
+    for a in range(3):
+        if wp.abs(d[a]) < 1.0e-9:
+            if wp.abs(p0[a] - c[a]) > h[a]:
+                hit = 0
+        else:
+            inv = 1.0 / d[a]
+            t1 = (c[a] - h[a] - p0[a]) * inv
+            t2 = (c[a] + h[a] - p0[a]) * inv
+            tmin = wp.max(tmin, wp.min(t1, t2))
+            tmax = wp.min(tmax, wp.max(t1, t2))
+    if tmin > tmax:
+        hit = 0
+    return hit == 1
+
+@wp.func
+def los_blocked(
+    p0: wp.vec3, p1: wp.vec3,
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+):
+    blocked = int(0)
+    for s in range(n_spheres):
+        if seg_hits_sphere(p0, p1, sphere_centers[s], sphere_radii[s]):
+            blocked = 1
+    for ci in range(n_cuboids):
+        if seg_hits_box(p0, p1, cuboid_centers[ci], cuboid_extents[ci]):
+            blocked = 1
+    return blocked == 1
+
+@wp.func
+def inside_obstacle(
+    p: wp.vec3,
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+):
+    inside = int(0)
+    for s in range(n_spheres):
+        if sdf_sphere(p, sphere_centers[s], sphere_radii[s]) < 0.0:
+            inside = 1
+    for ci in range(n_cuboids):
+        if sdf_cuboid(p, cuboid_centers[ci], cuboid_extents[ci]) < 0.0:
+            inside = 1
+    return inside == 1
+
 # ── Obstacle mask computation ────────────────────────────────────────────────
 # Computes a per-cell flag: 1 = inside obstacle (solid), 0 = fluid
 # Uses the same SDF primitives the puff system already uses.
@@ -716,13 +777,22 @@ def puff_sum_at(
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float),
     current_time: float, sigma_0: float,
     K_rel_x: float, K_rel_y: float, K_rel_z: float, num_puffs: int,
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+    use_los: int,
 ):
     """Sum of Gaussian puffs (with ground image) at point p.
 
     Puff growth uses the relative-dispersion share of K:
         σ_α² = σ₀² + 2·K_rel_α·age,  K_rel_α = f_rel·K_α.
+    Occlusion (use_los): points inside an obstacle read 0; a puff whose
+    centre is not visible from p (segment centre→p hits an obstacle) is
+    skipped entirely, image term included. Tested from the puff centre only.
     """
     c = float(0.0)
+    if use_los != 0:
+        if inside_obstacle(p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
+            return c
     s02 = sigma_0 * sigma_0
     for i in range(num_puffs):
         if puff_active[i] == 0:
@@ -745,6 +815,9 @@ def puff_sum_at(
         dz_image = p[2] + q[2]
         if wp.abs(dz_real) > 4.0*sig_z and wp.abs(dz_image) > 4.0*sig_z:
             continue
+        if use_los != 0:
+            if los_blocked(q, p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
+                continue
         r2_xy = diff[0]*diff[0]/sig2_x + diff[1]*diff[1]/sig2_y
         gauss_xy = wp.exp(-0.5*r2_xy)
         gauss_z_real = wp.exp(-0.5*dz_real*dz_real/sig2_z)
@@ -762,6 +835,9 @@ def query_sensor_hybrid(
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
     sigma_0:float, K_rel_x:float, K_rel_y:float, K_rel_z:float,
     num_puffs:int, concentration: wp.array(dtype=float),
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+    use_los: int,
 ):
     s=wp.tid(); p=sensor_pos[s]
     c_grid=float(0.0)
@@ -769,7 +845,8 @@ def query_sensor_hybrid(
         g=world_to_grid(p,dx)
         c_grid=sample_rho_3d(rho_grid,g[0],g[1],g[2])*rho_scale
     c_puff=puff_sum_at(p,puff_pos,puff_active,puff_emit_time,puff_mass,current_time,
-                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs)
+                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs,
+                       n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents,use_los)
     concentration[s]=c_grid+c_puff
 
 @wp.kernel
@@ -778,11 +855,15 @@ def compute_concentration_grid_kernel(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
     sigma_0:float, K_rel_x:float, K_rel_y:float, K_rel_z:float, dx:float, num_puffs:int,
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+    use_los: int,
 ):
     i,j,k=wp.tid()
     pos=wp.vec3((float(i)+0.5)*dx,(float(j)+0.5)*dx,(float(k)+0.5)*dx)
     c_puff=puff_sum_at(pos,puff_pos,puff_active,puff_emit_time,puff_mass,current_time,
-                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs)
+                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs,
+                       n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents,use_los)
     conc_grid[i,j,k]=rho_grid[i,j,k]*rho_scale+c_puff
 
 
@@ -1309,6 +1390,11 @@ class HybridFluidPuffSimulation:
             self._counters,
         ])
 
+    def _obstacle_args(self):
+        return (self.n_spheres, self.sphere_centers, self.sphere_radii,
+                self.n_cuboids, self.cuboid_centers, self.cuboid_extents,
+                1 if self.use_los else 0)
+
     def _rho_scale(self):
         """Grid-gas contribution to sensed concentration (0 unless legacy mode)."""
         return float(self.RHO_SCALE) if self.use_grid_gas else 0.0
@@ -1318,7 +1404,8 @@ class HybridFluidPuffSimulation:
         wp.launch(compute_concentration_grid_kernel,dim=self.wind_shape,inputs=[
             self.conc_grid,self.rho0,self._rho_scale(),
             self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
-            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],self.dx,n
+            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],self.dx,n,
+            *self._obstacle_args(),
         ])
 
     def query_concentration(self, sensor_positions_np):
@@ -1327,7 +1414,8 @@ class HybridFluidPuffSimulation:
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
             sensors,self.rho0,self._rho_scale(),self.dx,
             self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
-            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],n,conc
+            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],n,conc,
+            *self._obstacle_args(),
         ])
         return conc.numpy()
 
