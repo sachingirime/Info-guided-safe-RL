@@ -41,10 +41,17 @@ PASQUILL_GIFFORD_KD = {
     "G": {"K_D_X": 0.25, "K_D_Y":  0.5, "K_D_Z":  0.07, "desc": "Extremely stable"},
 }
 
-# Langevin sub-grid noise coefficients ℓ (m/√s): ℓ_i = √(2·K_D_i).
-# This follows from the Langevin equation connection to diffusion:
-#   σ² = ℓ²·t = 2·K_D·t  →  ℓ = √(2·K_D)
-# Reference: Thomson (1987).
+# Dispersion split (Gifford 1959 meandering-plume picture; Thomson 1987 for the
+# random-walk ↔ diffusion relation).  The total single-puff-ensemble spread is
+#   σ_α² = σ₀² + 2·K_α·t,
+# shared between puff growth (relative dispersion) and centroid noise:
+#   puff growth   σ_puff² = σ₀² + 2·f_rel·K_α·age
+#   centroid walk ℓ_α = √(2·(1 − f_rel)·K_α)  (m/√s), dX = ℓ_α·dW
+# so the ensemble-mean plume spreads as σ₀² + 2·K_α·t for any f_rel.
+# (Pre-fix: puffs grew with the full K *and* walked with ℓ = √(2K), so the
+# mean plume spread as σ₀² + 4·K·t — dispersion counted twice.)
+# The table below is the f_rel = 0 limit (ℓ for the full K), kept for
+# reference only; the sim computes ℓ from K and f_rel at launch time.
 import math as _math
 PASQUILL_GIFFORD_LANGEVIN = {
     cls: {
@@ -684,42 +691,67 @@ def advect_puffs_rk2(
 
 # ── Concentration kernels ────────────────────────────────────────────────────
 
+@wp.func
+def puff_sum_at(
+    p: wp.vec3,
+    puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float),
+    current_time: float, sigma_0: float,
+    K_rel_x: float, K_rel_y: float, K_rel_z: float, num_puffs: int,
+):
+    """Sum of Gaussian puffs (with ground image) at point p.
+
+    Puff growth uses the relative-dispersion share of K:
+        σ_α² = σ₀² + 2·K_rel_α·age,  K_rel_α = f_rel·K_α.
+    """
+    c = float(0.0)
+    s02 = sigma_0 * sigma_0
+    for i in range(num_puffs):
+        if puff_active[i] == 0:
+            continue
+        age = current_time - puff_emit_time[i]
+        if age < 1e-6:
+            continue
+        sig2_x = s02 + 2.0*K_rel_x*age
+        sig2_y = s02 + 2.0*K_rel_y*age
+        sig2_z = s02 + 2.0*K_rel_z*age
+        sig_x = wp.sqrt(sig2_x); sig_y = wp.sqrt(sig2_y); sig_z = wp.sqrt(sig2_z)
+        q = puff_pos[i]
+        diff = p - q
+        # Early exit on horizontal distance only
+        if wp.abs(diff[0]) > 4.0*sig_x or wp.abs(diff[1]) > 4.0*sig_y:
+            continue
+        # Ground reflection (image source method):
+        #   real puff at z_i → dz_real = z - z_i;  image at -z_i → dz_image = z + z_i
+        dz_real = diff[2]
+        dz_image = p[2] + q[2]
+        if wp.abs(dz_real) > 4.0*sig_z and wp.abs(dz_image) > 4.0*sig_z:
+            continue
+        r2_xy = diff[0]*diff[0]/sig2_x + diff[1]*diff[1]/sig2_y
+        gauss_xy = wp.exp(-0.5*r2_xy)
+        gauss_z_real = wp.exp(-0.5*dz_real*dz_real/sig2_z)
+        gauss_z_image = wp.exp(-0.5*dz_image*dz_image/sig2_z)
+        norm = puff_mass[i] / (15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
+        c = c + norm*gauss_xy*(gauss_z_real + gauss_z_image)
+    return c
+
+
 @wp.kernel
 def query_sensor_hybrid(
     sensor_pos: wp.array(dtype=wp.vec3),
     rho_grid: wp.array3d(dtype=float), rho_scale:float, dx:float,
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
-    sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float,
+    sigma_0:float, K_rel_x:float, K_rel_y:float, K_rel_z:float,
     num_puffs:int, concentration: wp.array(dtype=float),
 ):
     s=wp.tid(); p=sensor_pos[s]
-    g=world_to_grid(p,dx)
-    c_grid=sample_rho_3d(rho_grid,g[0],g[1],g[2])*rho_scale
-    c_puff=float(0.0)
-    for i in range(num_puffs):
-        if puff_active[i]==0: continue
-        age=current_time-puff_emit_time[i]
-        if age<1e-6: continue
-        sig2_x=sigma_0*sigma_0+2.0*K_d_x*age
-        sig2_y=sigma_0*sigma_0+2.0*K_d_y*age
-        sig2_z=sigma_0*sigma_0+2.0*K_d_z*age
-        sig_x=wp.sqrt(sig2_x); sig_y=wp.sqrt(sig2_y); sig_z=wp.sqrt(sig2_z)
-        diff=p-puff_pos[i]
-        # Early exit on horizontal distance only
-        if wp.abs(diff[0])>4.0*sig_x or wp.abs(diff[1])>4.0*sig_y: continue
-        # Ground reflection (image source method):
-        #   Real source at z_i  → dz_real  = z - z_i
-        #   Image source at -z_i → dz_image = z + z_i
-        dz_real=diff[2]
-        dz_image=p[2]+puff_pos[i][2]
-        if wp.abs(dz_real)>4.0*sig_z and wp.abs(dz_image)>4.0*sig_z: continue
-        r2_xy=diff[0]*diff[0]/sig2_x+diff[1]*diff[1]/sig2_y
-        gauss_xy=wp.exp(-0.5*r2_xy)
-        gauss_z_real=wp.exp(-0.5*dz_real*dz_real/sig2_z)
-        gauss_z_image=wp.exp(-0.5*dz_image*dz_image/sig2_z)
-        norm=puff_mass[i]/(15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
-        c_puff=c_puff+norm*gauss_xy*(gauss_z_real+gauss_z_image)
+    c_grid=float(0.0)
+    if rho_scale > 0.0:   # legacy grid gas only
+        g=world_to_grid(p,dx)
+        c_grid=sample_rho_3d(rho_grid,g[0],g[1],g[2])*rho_scale
+    c_puff=puff_sum_at(p,puff_pos,puff_active,puff_emit_time,puff_mass,current_time,
+                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs)
     concentration[s]=c_grid+c_puff
 
 @wp.kernel
@@ -727,31 +759,13 @@ def compute_concentration_grid_kernel(
     conc_grid: wp.array3d(dtype=float), rho_grid: wp.array3d(dtype=float), rho_scale:float,
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
-    sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float, dx:float, num_puffs:int,
+    sigma_0:float, K_rel_x:float, K_rel_y:float, K_rel_z:float, dx:float, num_puffs:int,
 ):
     i,j,k=wp.tid()
-    px=(float(i)+0.5)*dx; py=(float(j)+0.5)*dx; pz=(float(k)+0.5)*dx
-    pos=wp.vec3(px,py,pz); total_c=rho_grid[i,j,k]*rho_scale
-    for n in range(num_puffs):
-        if puff_active[n]==0: continue
-        age=current_time-puff_emit_time[n]
-        if age<1e-6: continue
-        sig2_x=sigma_0*sigma_0+2.0*K_d_x*age
-        sig2_y=sigma_0*sigma_0+2.0*K_d_y*age
-        sig2_z=sigma_0*sigma_0+2.0*K_d_z*age
-        sig_x=wp.sqrt(sig2_x); sig_y=wp.sqrt(sig2_y); sig_z=wp.sqrt(sig2_z)
-        diff=pos-puff_pos[n]
-        if wp.abs(diff[0])>4.0*sig_x or wp.abs(diff[1])>4.0*sig_y: continue
-        dz_real=diff[2]
-        dz_image=pos[2]+puff_pos[n][2]
-        if wp.abs(dz_real)>4.0*sig_z and wp.abs(dz_image)>4.0*sig_z: continue
-        r2_xy=diff[0]*diff[0]/sig2_x+diff[1]*diff[1]/sig2_y
-        gauss_xy=wp.exp(-0.5*r2_xy)
-        gauss_z_real=wp.exp(-0.5*dz_real*dz_real/sig2_z)
-        gauss_z_image=wp.exp(-0.5*dz_image*dz_image/sig2_z)
-        norm=puff_mass[n]/(15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
-        total_c=total_c+norm*gauss_xy*(gauss_z_real+gauss_z_image)
-    conc_grid[i,j,k]=total_c
+    pos=wp.vec3((float(i)+0.5)*dx,(float(j)+0.5)*dx,(float(k)+0.5)*dx)
+    c_puff=puff_sum_at(pos,puff_pos,puff_active,puff_emit_time,puff_mass,current_time,
+                       sigma_0,K_rel_x,K_rel_y,K_rel_z,num_puffs)
+    conc_grid[i,j,k]=rho_grid[i,j,k]*rho_scale+c_puff
 
 
 # ── Atmospheric wind model (vector-valued OU + gusts + turbulence) ────────────
@@ -909,9 +923,8 @@ class HybridFluidPuffSimulation:
     K_D_Y = 3.8    # cross-wind turbulent diffusivity (m²/s)
     K_D_Z = 1.3    # vertical turbulent diffusivity (m²/s)
 
-    LANGEVIN_X = 1.73  # along-wind Langevin noise coefficient (m/√s) = √(2·K_D_X)
-    LANGEVIN_Y = 2.76  # cross-wind Langevin noise coefficient (m/√s) = √(2·K_D_Y)
-    LANGEVIN_Z = 1.61  # vertical Langevin noise coefficient (m/√s) = √(2·K_D_Z)
+    # Puff growth uses K_rel = f_rel·K; centroid noise uses ℓ = √(2(1−f_rel)K).
+    # Both are derived from K_D_* and f_rel at launch time (see K_rel, L).
 
     # Grid scalar diffusion (turbulent eddy diffusivity, NOT molecular D_mol)
     D_ISO = 15.0       # m²/s — turbulent mixing on the Eulerian grid (reduced from 50)
@@ -1066,19 +1079,32 @@ class HybridFluidPuffSimulation:
         self.wind_model = self._make_wind_model(wind_center_angle, wind_seed)
         self.wind_model.shear_exponent = shear
 
+    @property
+    def K_rel(self):
+        """Puff-growth diffusivities f_rel·K (m²/s), (x, y, z)."""
+        f = self.f_rel
+        return (f*self.K_D_X, f*self.K_D_Y, f*self.K_D_Z)
+
+    @property
+    def L(self):
+        """Centroid-noise coefficients ℓ = √(2(1−f_rel)K) (m/√s), (x, y, z)."""
+        g = 2.0 * (1.0 - self.f_rel)
+        return (math.sqrt(g*self.K_D_X), math.sqrt(g*self.K_D_Y), math.sqrt(g*self.K_D_Z))
+
+    def puff_sigma(self, ages):
+        """Per-axis puff σ (m) for an array of ages: σ² = σ₀² + 2·f_rel·K·age."""
+        ages = np.asarray(ages, dtype=np.float64)
+        return np.stack([np.sqrt(self.sigma_0**2 + 2.0*k*ages) for k in self.K_rel], axis=-1)
+
     def set_stability_class(self, pg_class: str = "D"):
-        """Set K_D, Langevin, lapse rate, and shear exponent from PG class (A–G)."""
+        """Set K_D, lapse rate, and shear exponent from PG class (A–G)."""
         pg_class = pg_class.upper()
         if pg_class not in PASQUILL_GIFFORD_KD:
             raise ValueError(f"Unknown PG class '{pg_class}'. Use A–G.")
         kd = PASQUILL_GIFFORD_KD[pg_class]
-        lg = PASQUILL_GIFFORD_LANGEVIN[pg_class]
         self.K_D_X = kd["K_D_X"]
         self.K_D_Y = kd["K_D_Y"]
         self.K_D_Z = kd["K_D_Z"]
-        self.LANGEVIN_X = lg["L_X"]
-        self.LANGEVIN_Y = lg["L_Y"]
-        self.LANGEVIN_Z = lg["L_Z"]
         # Lapse rate for temperature-based buoyancy (NOAA READY ranges)
         self.LAPSE_RATE = PG_LAPSE_RATES[pg_class]
         # Shear exponent for power-law vertical wind profile
@@ -1246,7 +1272,7 @@ class HybridFluidPuffSimulation:
         wp.launch(advect_puffs_rk2,dim=n,inputs=[
             self.puff_pos,self.puff_active,self.puff_emit_time,
             self.u0,self.sim_dt,self.dx,float(METHANE_BUOYANCY_ACCEL),self.sim_time,
-            float(self.LANGEVIN_X),float(self.LANGEVIN_Y),float(self.LANGEVIN_Z),
+            *[float(v) for v in self.L],
             self.n_spheres,self.sphere_centers,self.sphere_radii,
             self.n_cuboids,self.cuboid_centers,self.cuboid_extents,
             float(self.LAPSE_RATE),float(self.T_SURFACE),
@@ -1268,7 +1294,7 @@ class HybridFluidPuffSimulation:
         wp.launch(compute_concentration_grid_kernel,dim=self.wind_shape,inputs=[
             self.conc_grid,self.rho0,self._rho_scale(),
             self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
-            self.sim_time,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,self.dx,n
+            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],self.dx,n
         ])
 
     def query_concentration(self, sensor_positions_np):
@@ -1277,7 +1303,7 @@ class HybridFluidPuffSimulation:
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
             sensors,self.rho0,self._rho_scale(),self.dx,
             self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
-            self.sim_time,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,n,conc
+            self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],n,conc
         ])
         return conc.numpy()
 
@@ -1359,8 +1385,7 @@ def run_3d_puff_visualization(center_angle, angle_range, base_speed):
         positions, ages = sim.get_puff_data()
 
         if len(positions) > 0:
-            max_kd = max(sim.K_D_X, sim.K_D_Y, sim.K_D_Z)
-            sigmas = np.sqrt(sim.sigma_0**2 + 2.0 * max_kd * ages)
+            sigmas = sim.puff_sigma(ages).max(axis=1)
             sizes = sigmas * 8.0
             max_age = max(ages.max(), 1.0)
             colors = plt.cm.viridis(1.0 - ages / max_age)

@@ -750,7 +750,6 @@ class RealTimeVizPV:
         if len(positions) > 0:
             max_age = max(ages.max(), 1.0)
             age_norm = ages / max_age
-            max_kd = max(env.fluid_sim.K_D_X, env.fluid_sim.K_D_Y, env.fluid_sim.K_D_Z)
             median_size = max(int(env.fluid_sim.sigma_0 * 6), 8)
             rgba = viridis_rgba(age_norm)
 
