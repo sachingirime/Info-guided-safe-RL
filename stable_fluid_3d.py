@@ -10,8 +10,9 @@ Physics:
   - Obstacle-aware velocity/pressure/density (SDF-based Neumann BCs)
   - Lagrangian Gaussian puffs with RK2 advection + Langevin noise
   - Ground reflection via method of images at z=0
-  - Pasquill-Gifford stability classes A–G for K_D; dispersion split between
-    puff growth (f_rel·K) and seeded centroid noise (ℓ = √(2(1−f_rel)K))
+  - Puff dispersion: per-puff OU turbulent velocity (Lagrangian stochastic
+    model, Thomson 1987) calibrated to Briggs (1973) classes A–F, plus
+    relative puff growth σ² = σ₀² + 2·K_rel·age
   - Optional buoyant rise velocity w_rise0·(σ₀/σ)³ (off by default)
 """
 
@@ -25,43 +26,78 @@ import numpy as np
 # Q in kg/s; each puff carries Q · emit_interval (kg)
 # Concentration in kg/m³; to ppm: c × (R·T)/(M·P) × 1e6
 
-# Pasquill-Gifford turbulent diffusivities K_D (m²/s) for σ² = σ₀² + 2·K_D·t.
-# Derived from Briggs (1973) rural σ_y(x), σ_z(x) power-law formulas
-# at reference distance x=200 m, mean wind U=3 m/s (travel time t≈67 s):
-#   K_D = σ²(x) / (2·t)
-# Cross-wind (Y) and vertical (Z) from Briggs curves; along-wind (X) ≈ 0.3·K_D_Y
-# (along-wind spreading dominated by shear, not turbulent diffusion).
-# References: Gifford (1961), Briggs (1973), Seinfeld & Pandis (2016) Ch. 18.
-PASQUILL_GIFFORD_KD = {
-    "A": {"K_D_X": 4.3,  "K_D_Y": 14.2, "K_D_Z": 11.9,  "desc": "Very unstable"},
-    "B": {"K_D_X": 3.0,  "K_D_Y":  8.5, "K_D_Z":  5.5,  "desc": "Unstable"},
-    "C": {"K_D_X": 2.2,  "K_D_Y":  5.5, "K_D_Z":  2.8,  "desc": "Slightly unstable"},
-    "D": {"K_D_X": 1.5,  "K_D_Y":  3.8, "K_D_Z":  1.3,  "desc": "Neutral (default)"},
-    "E": {"K_D_X": 1.0,  "K_D_Y":  2.2, "K_D_Z":  0.6,  "desc": "Slightly stable"},
-    "F": {"K_D_X": 0.5,  "K_D_Y":  1.1, "K_D_Z":  0.15, "desc": "Stable"},
-    "G": {"K_D_X": 0.25, "K_D_Y":  0.5, "K_D_Z":  0.07, "desc": "Extremely stable"},
+# ── Puff dispersion: Lagrangian stochastic model (Thomson 1987) ─────────────
+# Each puff carries a turbulent velocity v (per axis, OU / Langevin):
+#   v ← v·e^{−dt/T_L} + σ·√(1 − e^{−2dt/T_L})·ξ,   ξ ~ N(0,1) (seeded)
+# added to the resolved wind in both RK2 stages.  Turbulence is homogeneous
+# (σ, T_L constant with height), so the OU model satisfies Thomson's
+# well-mixed condition without a drift term.  Reflections at the ground and
+# at obstacles flip the normal component of v.
+# Intensities from the Briggs (1973) open-country near-field slopes:
+#   σ_u = σ_v = a_y·U,  σ_w = a_z·U,   U = mean wind at source height.
+# T_L (s) fitted offline (validation/fit_tl.py → tl_fit.json) so that
+#   σ²(x) = σ₀² + 2·K_rel·t + 2σ_v²T_L²(t/T_L − 1 + e^{−t/T_L}),  t = x/U
+# matches Briggs σ_y, σ_z over x = 25–200 m at U = LSM_U_FIT, with σ₀ = 2 m,
+# K_rel = 0.2 m²/s, T_L ∈ [5, 2000] s.  The sim uses T_L·LSM_U_FIT/U, so the
+# Taylor term depends on x only (surface-layer scaling T_L ∝ z/u*, u* ∝ U).
+# Fit residuals (sim/Briggs over 25–200 m, from fit_tl.py):
+#   A y [0.98,1.11] z [0.98,1.13]   B y [0.97,1.20] z [0.95,1.34]
+#   C y [0.95,1.40] z [0.91,1.67]   D y [0.91,1.67] z [0.85,2.06]
+#   E y [0.86,2.04] z [1.06,3.72]   F y [0.79,2.82] z [1.88,6.87]
+#   (E/F σ_z and F σ_y hit the 5 s lower bound: σ₀ = 2 m exceeds Briggs at short range.)
+# Puff growth σ_puff² = σ₀² + 2·K_rel·age represents relative dispersion only
+# (Farrell et al. 2002; GADEN, Monroy et al. 2017).
+LSM_U_FIT = 3.0          # m/s, reference wind of the T_L fit
+PG_LSM = {
+    "A": {"a_y": 0.22, "a_z": 0.20,  "TL_y": 321.9, "TL_z": 382.9, "desc": "Very unstable"},
+    "B": {"a_y": 0.16, "a_z": 0.12,  "TL_y": 198.4, "TL_z": 139.3, "desc": "Unstable"},
+    "C": {"a_y": 0.11, "a_z": 0.08,  "TL_y": 103.6, "TL_z":  51.5, "desc": "Slightly unstable"},
+    "D": {"a_y": 0.08, "a_z": 0.06,  "TL_y":  55.3, "TL_z":  14.7, "desc": "Neutral (default)"},
+    "E": {"a_y": 0.06, "a_z": 0.03,  "TL_y":  27.7, "TL_z":   5.0, "desc": "Slightly stable"},
+    "F": {"a_y": 0.04, "a_z": 0.016, "TL_y":   5.0, "TL_z":   5.0, "desc": "Stable"},
 }
 
-# Dispersion split (Gifford 1959 meandering-plume picture; Thomson 1987 for the
-# random-walk ↔ diffusion relation).  The total single-puff-ensemble spread is
-#   σ_α² = σ₀² + 2·K_α·t,
-# shared between puff growth (relative dispersion) and centroid noise:
-#   puff growth   σ_puff² = σ₀² + 2·f_rel·K_α·age
-#   centroid walk ℓ_α = √(2·(1 − f_rel)·K_α)  (m/√s), dX = ℓ_α·dW
-# so the ensemble-mean plume spreads as σ₀² + 2·K_α·t for any f_rel.
-# (Pre-fix: puffs grew with the full K *and* walked with ℓ = √(2K), so the
-# mean plume spread as σ₀² + 4·K·t — dispersion counted twice.)
-# The table below is the f_rel = 0 limit (ℓ for the full K), kept for
-# reference only; the sim computes ℓ from K and f_rel at launch time.
-import math as _math
-PASQUILL_GIFFORD_LANGEVIN = {
-    cls: {
-        "L_X": round(_math.sqrt(2.0 * kd["K_D_X"]), 2),
-        "L_Y": round(_math.sqrt(2.0 * kd["K_D_Y"]), 2),
-        "L_Z": round(_math.sqrt(2.0 * kd["K_D_Z"]), 2),
-    }
-    for cls, kd in PASQUILL_GIFFORD_KD.items()
-}
+# Previous constant-K table, replaced by PG_LSM (kept for reference).  Its
+# class-D row does not follow its own stated formula: K = σ²(200 m)/(2t) with
+# Briggs D gives K_y ≈ 1.9, K_z ≈ 0.8, not 3.8 and 1.3.  Constant K also gives
+# σ ∝ √x, which cannot follow Briggs' near-linear σ(x) over 50–200 m (V3, pre-LSM).
+# # Pasquill-Gifford turbulent diffusivities K_D (m²/s) for σ² = σ₀² + 2·K_D·t.
+# # Derived from Briggs (1973) rural σ_y(x), σ_z(x) power-law formulas
+# # at reference distance x=200 m, mean wind U=3 m/s (travel time t≈67 s):
+# #   K_D = σ²(x) / (2·t)
+# # Cross-wind (Y) and vertical (Z) from Briggs curves; along-wind (X) ≈ 0.3·K_D_Y
+# # (along-wind spreading dominated by shear, not turbulent diffusion).
+# # References: Gifford (1961), Briggs (1973), Seinfeld & Pandis (2016) Ch. 18.
+# PASQUILL_GIFFORD_KD = {
+#     "A": {"K_D_X": 4.3,  "K_D_Y": 14.2, "K_D_Z": 11.9,  "desc": "Very unstable"},
+#     "B": {"K_D_X": 3.0,  "K_D_Y":  8.5, "K_D_Z":  5.5,  "desc": "Unstable"},
+#     "C": {"K_D_X": 2.2,  "K_D_Y":  5.5, "K_D_Z":  2.8,  "desc": "Slightly unstable"},
+#     "D": {"K_D_X": 1.5,  "K_D_Y":  3.8, "K_D_Z":  1.3,  "desc": "Neutral (default)"},
+#     "E": {"K_D_X": 1.0,  "K_D_Y":  2.2, "K_D_Z":  0.6,  "desc": "Slightly stable"},
+#     "F": {"K_D_X": 0.5,  "K_D_Y":  1.1, "K_D_Z":  0.15, "desc": "Stable"},
+#     "G": {"K_D_X": 0.25, "K_D_Y":  0.5, "K_D_Z":  0.07, "desc": "Extremely stable"},
+# }
+#
+# # Dispersion split (Gifford 1959 meandering-plume picture; Thomson 1987 for the
+# # random-walk ↔ diffusion relation).  The total single-puff-ensemble spread is
+# #   σ_α² = σ₀² + 2·K_α·t,
+# # shared between puff growth (relative dispersion) and centroid noise:
+# #   puff growth   σ_puff² = σ₀² + 2·f_rel·K_α·age
+# #   centroid walk ℓ_α = √(2·(1 − f_rel)·K_α)  (m/√s), dX = ℓ_α·dW
+# # so the ensemble-mean plume spreads as σ₀² + 2·K_α·t for any f_rel.
+# # (Pre-fix: puffs grew with the full K *and* walked with ℓ = √(2K), so the
+# # mean plume spread as σ₀² + 4·K·t — dispersion counted twice.)
+# # The table below is the f_rel = 0 limit (ℓ for the full K), kept for
+# # reference only; the sim computes ℓ from K and f_rel at launch time.
+# import math as _math
+# PASQUILL_GIFFORD_LANGEVIN = {
+#     cls: {
+#         "L_X": round(_math.sqrt(2.0 * kd["K_D_X"]), 2),
+#         "L_Y": round(_math.sqrt(2.0 * kd["K_D_Y"]), 2),
+#         "L_Z": round(_math.sqrt(2.0 * kd["K_D_Z"]), 2),
+#     }
+#     for cls, kd in PASQUILL_GIFFORD_KD.items()
+# }
 
 # Atmospheric lapse rates Γ (K/m) by PG stability class.
 # Determines temperature profile T(z) = T_surface - Γ·z.
@@ -101,7 +137,9 @@ METHANE_BUOYANCY_ACCEL = 9.81 * (1.225 - 0.657) / 1.225  # ≈ 4.55 m/s²
 T_SURFACE_DEFAULT = 293.15  # K (20°C reference surface temperature)
 
 # Power-law shear exponents α_s by PG stability class.
-# Wind shear profile: s(k) = (z/z_ref)^α_s
+# Wind shear profile: u(z) = U_ref·(z/z_ref)^α_s with z_ref = SHEAR_Z_REF
+# (U_ref = base wind speed at 10 m).  Pre-LSM: s = ((k+0.5)/NZ)^α, i.e. z
+# normalised by the 128 m domain top, so U_ref was the wind at 128 m.
 # Unstable → well-mixed boundary layer → low shear exponent.
 # Stable → strong wind gradient → high shear exponent.
 # Range α_s ∈ {0.10, …, 0.35} as in wind_field_method.tex.
@@ -113,6 +151,19 @@ PG_SHEAR_EXPONENTS = {
     "E": 0.30,   # Slightly stable
     "F": 0.35,   # Stable — strong shear near ground
     "G": 0.40,   # Extremely stable — very strong shear
+}
+SHEAR_Z_REF = 10.0   # m, reference height of the shear profile
+
+# Wind presets (stochastic resolved-wind amplitude, see HybridFluidPuffSimulation).
+#   calibrated: resolved fluctuations small, mean-direction meander ≲ 3° at the
+#               env wind (1.5 m/s); puff turbulence comes from the LSM, which is
+#               calibrated to Briggs.  Default.
+#   meandering: pre-LSM amplitudes (coarse OU field σ_stat ≈ 2.7 m/s, mean-wind
+#               meander ≈ 14° at 3 m/s).  Harder RL; adds to the LSM, so the
+#               plume is wider than the class calibration.
+WIND_PRESETS = {
+    "calibrated": {"turb_scale": 0.1},
+    "meandering": {"turb_scale": 1.0},
 }
 
 # ── Grid dimensions (single source of truth for all files) ────────────────────
@@ -402,7 +453,7 @@ def integrate_rho(
     z = (float(k) + 0.5) * dx
     t_env = t_surface - lapse_rate * z
     # Briggs (1975) dilution-limited buoyancy: a_eff = a_b · (σ₀/σ)³
-    # σ² = σ₀² + 2·K_D_Z·t  →  dilution = (σ₀²/σ²)^(3/2)
+    # σ² = σ₀² + 2·K·t  →  dilution = (σ₀²/σ²)^(3/2)   (legacy: K = K_rel)
     # For the grid density we use a global age estimate (sim_time) since
     # individual cell ages are not tracked.  This makes the plume buoyancy
     # decay rapidly after the first few seconds, producing a finite rise.
@@ -616,6 +667,7 @@ def apply_global_wind(
     alpha:float, dt:float, shear_exp:float,
     turb_field: wp.array3d(dtype=wp.vec3),
     mask: wp.array3d(dtype=int),
+    z_ref:float, dx:float,
 ):
     """Newtonian relaxation (nudging) toward target wind profile.
 
@@ -627,8 +679,11 @@ def apply_global_wind(
     i,j,k = wp.tid()
     if mask[i,j,k] == 1:
         return
-    z_frac=(float(k)+0.5)/float(WIND_NZ)
-    shear=wp.pow(wp.max(z_frac,0.02),shear_exp)
+    # Power law u(z) = U_ref·(z/z_ref)^α at the cell centre.
+    # (Pre-LSM: z_frac = (k+0.5)/NZ, shear = max(z_frac, 0.02)^α — z
+    # normalised by the domain top.)
+    z=(float(k)+0.5)*dx
+    shear=wp.pow(wp.max(z,0.5)/z_ref,shear_exp)
     # Map fine grid coords to coarse turbulence grid coords
     tx = (float(i) + 0.5) / float(WIND_NX) * float(TURB_NX - 1)
     ty = (float(j) + 0.5) / float(WIND_NY) * float(TURB_NY - 1)
@@ -663,6 +718,7 @@ def apply_ground_drag(u: wp.array3d(dtype=wp.vec3), drag_rate:float, dt:float, n
 @wp.kernel
 def reflect_puffs_at_boundary(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
+    puff_vel: wp.array(dtype=wp.vec3),
     domain_max_x:float, domain_max_y:float, domain_max_z:float,
     counters: wp.array(dtype=int),
 ):
@@ -674,9 +730,12 @@ def reflect_puffs_at_boundary(
         puff_active[i]=0
         wp.atomic_add(counters, COUNTER_EXITED, 1)
         return
-    # Ground (z=0): solid wall — reflect back
+    # Ground (z=0): solid wall — reflect position and the vertical
+    # turbulent velocity (perfect reflection keeps the LSM well mixed)
     if pz<0.0:
         pz=-pz
+        v=puff_vel[i]
+        puff_vel[i]=wp.vec3(v[0], v[1], -v[2])
     puff_pos[i]=wp.vec3(px, py, pz)
 
 # ── Lagrangian puffs ─────────────────────────────────────────────────────────
@@ -689,8 +748,10 @@ COUNTER_EXITED = wp.constant(1)
 def emit_puff_kernel(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float),
+    puff_vel: wp.array(dtype=wp.vec3),
     idx: int, pos: wp.vec3, emit_time: float, mass: float,
     counters: wp.array(dtype=int),
+    sig_v: wp.vec3, seed: int,
 ):
     # A still-active puff in this ring-buffer slot means max_puffs is too
     # small and its mass is lost: count it.
@@ -700,6 +761,9 @@ def emit_puff_kernel(
     puff_active[idx] = 1
     puff_emit_time[idx] = emit_time
     puff_mass[idx] = mass
+    # Turbulent velocity drawn from the stationary distribution N(0, σ²)
+    state = wp.rand_init(seed, idx)
+    puff_vel[idx] = wp.vec3(wp.randn(state)*sig_v[0], wp.randn(state)*sig_v[1], wp.randn(state)*sig_v[2])
 
 BUOY_NONE = wp.constant(0)
 BUOY_RISE = wp.constant(1)
@@ -709,7 +773,7 @@ def advect_puffs_rk2(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), wind_field: wp.array3d(dtype=wp.vec3),
     dt:float, dx:float, current_time:float,
-    langevin_x:float, langevin_y:float, langevin_z:float,
+    puff_vel: wp.array(dtype=wp.vec3), ou_decay: wp.vec3, ou_noise: wp.vec3,
     n_spheres:int, sphere_centers:wp.array(dtype=wp.vec3), sphere_radii:wp.array(dtype=float),
     n_cuboids:int, cuboid_centers:wp.array(dtype=wp.vec3), cuboid_extents:wp.array(dtype=wp.vec3),
     lapse_rate:float, t_surface:float, seed:int,
@@ -737,36 +801,46 @@ def advect_puffs_rk2(
         t_env=t_surface-lapse_rate*pos[2]
         buoy=w_rise0*dilution*(293.15/wp.max(t_env,200.0))
 
-    # RK2 advection
-    vel1=sample_vel_3d(wind_field,gx,gy,gz)
-    vel1=wp.vec3(vel1[0],vel1[1],vel1[2]+buoy); k1=vel1*dt
-    gm=world_to_grid(pos+0.5*k1,dx)
-    vel2=sample_vel_3d(wind_field,gm[0],gm[1],gm[2])
-    vel2=wp.vec3(vel2[0],vel2[1],vel2[2]+buoy)
-    new_pos=pos+vel2*dt
-
-    # Centroid noise: independent N(0,1) per axis from Warp's seeded PRNG.
-    # Stream = (per-step seed, puff index) → reproducible for a fixed sim seed.
-    # (Pre-fix: an integer hash of (i, int(100·t)) with visible x/y correlation.)
+    # Turbulent velocity: exact OU update per axis (Thomson 1987, homogeneous
+    # Gaussian turbulence).  ou_decay = e^{−dt/T_L}, ou_noise = σ·√(1 − e^{−2dt/T_L}).
+    # Noise: Warp's seeded PRNG, stream = (per-step seed, puff index).
     state=wp.rand_init(seed,i)
-    nx_r=wp.randn(state)
-    ny_r=wp.randn(state)
-    nz_r=wp.randn(state)
-    sqrt_dt=wp.sqrt(dt)
-    new_pos=new_pos+wp.vec3(nx_r*langevin_x*sqrt_dt,
-                            ny_r*langevin_y*sqrt_dt,
-                            nz_r*langevin_z*sqrt_dt)
+    v=puff_vel[i]
+    v=wp.vec3(v[0]*ou_decay[0]+ou_noise[0]*wp.randn(state),
+              v[1]*ou_decay[1]+ou_noise[1]*wp.randn(state),
+              v[2]*ou_decay[2]+ou_noise[2]*wp.randn(state))
+
+    # RK2 advection on resolved wind + turbulent velocity + buoyant rise
+    vb=wp.vec3(v[0],v[1],v[2]+buoy)
+    vel1=sample_vel_3d(wind_field,gx,gy,gz)+vb; k1=vel1*dt
+    gm=world_to_grid(pos+0.5*k1,dx)
+    vel2=sample_vel_3d(wind_field,gm[0],gm[1],gm[2])+vb
+    new_pos=pos+vel2*dt
 
     # Obstacles — push puffs 2 m from the surface (half a cell) so they
     # reach a zone with nonzero wind velocity for advection.
     margin = 2.0
+    # Obstacle bounce: also flip the turbulent velocity's normal component
+    # when it points into the surface.
     for s in range(n_spheres):
         c=sphere_centers[s]; r=sphere_radii[s]; dist=sdf_sphere(new_pos,c,r)
-        if dist<margin: n=normal_sphere(new_pos,c); new_pos=new_pos+n*(margin-dist)
+        if dist<margin:
+            n=normal_sphere(new_pos,c); new_pos=new_pos+n*(margin-dist)
+            vn=wp.dot(v,n)
+            if vn<0.0: v=v-2.0*vn*n
     for ci in range(n_cuboids):
         c=cuboid_centers[ci]; e=cuboid_extents[ci]; dist=sdf_cuboid(new_pos,c,e)
-        if dist<margin: n=normal_cuboid(new_pos,c,e); new_pos=new_pos+n*(margin-dist)
+        if dist<margin:
+            n=normal_cuboid(new_pos,c,e); new_pos=new_pos+n*(margin-dist)
+            vn=wp.dot(v,n)
+            if vn<0.0: v=v-2.0*vn*n
     puff_pos[i]=new_pos
+    puff_vel[i]=v
+
+@wp.kernel
+def sample_wind_point(u: wp.array3d(dtype=wp.vec3), p: wp.vec3, dx: float, out: wp.array(dtype=wp.vec3)):
+    g = world_to_grid(p, dx)
+    out[0] = sample_vel_3d(u, g[0], g[1], g[2])
 
 # ── Concentration kernels ────────────────────────────────────────────────────
 
@@ -784,7 +858,7 @@ def puff_sum_at(
     """Sum of Gaussian puffs (with ground image) at point p.
 
     Puff growth uses the relative-dispersion share of K:
-        σ_α² = σ₀² + 2·K_rel_α·age,  K_rel_α = f_rel·K_α.
+        σ_α² = σ₀² + 2·K_rel_α·age  (relative dispersion only).
     Occlusion (use_los): points inside an obstacle read 0; a puff whose
     centre is not visible from p (segment centre→p hits an obstacle) is
     skipped entirely, image term included. Tested from the puff centre only.
@@ -1024,14 +1098,8 @@ WindDirectionModel = WindVectorModel
 # ── Main simulation class ────────────────────────────────────────────────────
 
 class HybridFluidPuffSimulation:
-    # Pasquill-Gifford Class D (neutral) — default atmospheric stability.
-    # Change via set_stability_class() or override directly.
-    K_D_X = 1.5    # along-wind turbulent diffusivity (m²/s)
-    K_D_Y = 3.8    # cross-wind turbulent diffusivity (m²/s)
-    K_D_Z = 1.3    # vertical turbulent diffusivity (m²/s)
-
-    # Puff growth uses K_rel = f_rel·K; centroid noise uses ℓ = √(2(1−f_rel)K).
-    # Both are derived from K_D_* and f_rel at launch time (see K_rel, L).
+    # Puff dispersion: OU turbulent velocity per puff (PG_LSM, set by
+    # set_stability_class; class D by default) + relative puff growth K_rel.
 
     # Grid scalar diffusion (turbulent eddy diffusivity, NOT molecular D_mol)
     D_ISO = 15.0       # m²/s — turbulent mixing on the Eulerian grid (reduced from 50)
@@ -1047,7 +1115,7 @@ class HybridFluidPuffSimulation:
                  wind_base_speed=4.5, wind_seed=42, max_puffs=1024,
                  seed=None,
                  use_grid_gas=False,
-                 f_rel=0.5,
+                 K_rel=0.2,
                  buoyancy_mode="none",
                  w_rise0=0.0,
                  ground_drag_rate=2.4,
@@ -1058,13 +1126,16 @@ class HybridFluidPuffSimulation:
                  shear_exponent=None,
                  use_los=True,
                  legacy_emission=False,
-                 turb_scale=1.0):
+                 turb_scale=None,
+                 wind_preset="calibrated",
+                 stability_class="D"):
         """
         seed              : puff RNG seed (defaults to wind_seed).
         use_grid_gas      : legacy Eulerian gas field + source momentum jet.
                             Kept only to reproduce pre-fix figures.
-        f_rel             : share of K used for puff growth; the remaining
-                            (1 - f_rel) drives seeded centroid noise.
+        K_rel             : m²/s, puff growth σ² = σ₀² + 2·K_rel·age (relative
+                            dispersion only; absolute dispersion is the LSM).
+                            Replaces f_rel (pre-LSM share of K for growth).
         buoyancy_mode     : "none" (neutral / dilute gas) or "rise".
         w_rise0           : initial rise speed (m/s) for "rise" mode.
         ground_drag_rate  : 1/s. Old value was 0.08 per frame at 30 fps (~2.4/s).
@@ -1077,19 +1148,23 @@ class HybridFluidPuffSimulation:
         legacy_emission   : pre-fix emission (two puffs per interval). Legacy only.
         turb_scale        : multiplies every stochastic wind amplitude (coarse OU
                             field σ, OU turbulence layers, mean-wind OU σ).
+                            None → from wind_preset.
+        wind_preset       : "calibrated" (default, turb_scale 0.1) or "meandering"
+                            (turb_scale 1.0, pre-LSM amplitudes; harder RL).
+        stability_class   : PG class A–F (LSM intensities, T_L, shear, lapse rate).
         """
         self.seed = int(wind_seed if seed is None else seed)
         self.use_grid_gas = bool(use_grid_gas)
-        self.f_rel = float(f_rel)
-        if not 0.0 <= self.f_rel <= 1.0:
-            raise ValueError("f_rel must be in [0, 1]")
+        self.k_rel = float(K_rel)
+        if self.k_rel < 0.0:
+            raise ValueError("K_rel must be >= 0")
         if buoyancy_mode not in ("none", "rise"):
             raise ValueError("buoyancy_mode must be 'none' or 'rise'")
         self.buoyancy_mode = buoyancy_mode
         self.w_rise0 = float(w_rise0)
-        if buoyancy_mode == "rise" and self.f_rel == 0.0:
+        if buoyancy_mode == "rise" and self.k_rel == 0.0:
             import warnings
-            warnings.warn("buoyancy_mode='rise' with f_rel=0: puffs never dilute, so the "
+            warnings.warn("buoyancy_mode='rise' with K_rel=0: puffs never dilute, so the "
                           "rise never decays (no plateau).")
         self.ground_drag_rate = float(ground_drag_rate)
         self.release_jitter = float(release_jitter)
@@ -1099,7 +1174,10 @@ class HybridFluidPuffSimulation:
         self.shear_exponent_override = None if shear_exponent is None else float(shear_exponent)
         self.use_los = bool(use_los)
         self.legacy_emission = bool(legacy_emission)
-        self.turb_scale = float(turb_scale)
+        if wind_preset not in WIND_PRESETS:
+            raise ValueError(f"wind_preset must be one of {list(WIND_PRESETS)}")
+        self.wind_preset = wind_preset
+        self.turb_scale = float(WIND_PRESETS[wind_preset]["turb_scale"] if turb_scale is None else turb_scale)
         self.wind_angle_range = wind_angle_range
         self.wind_base_speed = wind_base_speed
 
@@ -1121,6 +1199,7 @@ class HybridFluidPuffSimulation:
         self.puff_active=wp.zeros(self.max_puffs,dtype=int)
         self.puff_emit_time=wp.zeros(self.max_puffs,dtype=float)
         self.puff_mass=wp.zeros(self.max_puffs,dtype=float)   # kg per puff, set at release
+        self.puff_vel=wp.zeros(self.max_puffs,dtype=wp.vec3)  # LSM turbulent velocity (m/s)
         self.next_puff_idx=0; self.emit_interval=0.05
         self._next_emit_time=0.0   # emission schedule: t_n = n·emit_interval
         self.n_emitted=0
@@ -1131,7 +1210,6 @@ class HybridFluidPuffSimulation:
 
         self.Q = 20.0           # kg/s — methane emission rate (overridden by env)
         self.sigma_0 = 2.0      # m — initial puff standard deviation
-        self.K_d = max(self.K_D_X, self.K_D_Y, self.K_D_Z)  # isotropic proxy for viz
 
         self.wind_model=self._make_wind_model(wind_center_angle, wind_seed)
 
@@ -1156,6 +1234,11 @@ class HybridFluidPuffSimulation:
         # Pressure solve: Red-Black SOR iterations (see divergence_residual)
         self.sor_iters = 25
         self._div_scratch = wp.zeros(self.wind_shape, dtype=float)
+
+        self._U_src = None
+        self._wind_probe = wp.zeros(1, dtype=wp.vec3)
+        self._next_U_update = 0.0
+        self.set_stability_class(stability_class)
 
     def divergence_residual(self, u_ref=None):
         """Normalised divergence of the current (projected) wind field.
@@ -1197,11 +1280,13 @@ class HybridFluidPuffSimulation:
                   self.rho_tmp, self.conc_grid):
             a.zero_()
         self.puff_pos.zero_(); self.puff_active.zero_(); self.puff_emit_time.zero_()
-        self.puff_mass.zero_(); self._counters.zero_()
+        self.puff_mass.zero_(); self.puff_vel.zero_(); self._counters.zero_()
         self.next_puff_idx = 0
         self._next_emit_time = 0.0
         self.n_emitted = 0
         self._step_counter = 0
+        self._U_src = None
+        self._next_U_update = 0.0
         self.sim_time = 0.0
         if seed is not None:
             self.seed = int(seed)
@@ -1217,38 +1302,74 @@ class HybridFluidPuffSimulation:
 
     @property
     def K_rel(self):
-        """Puff-growth diffusivities f_rel·K (m²/s), (x, y, z)."""
-        f = self.f_rel
-        return (f*self.K_D_X, f*self.K_D_Y, f*self.K_D_Z)
-
-    @property
-    def L(self):
-        """Centroid-noise coefficients ℓ = √(2(1−f_rel)K) (m/√s), (x, y, z)."""
-        g = 2.0 * (1.0 - self.f_rel)
-        return (math.sqrt(g*self.K_D_X), math.sqrt(g*self.K_D_Y), math.sqrt(g*self.K_D_Z))
+        """Puff-growth diffusivity (m²/s) per axis (isotropic K_rel)."""
+        return (self.k_rel, self.k_rel, self.k_rel)
 
     def puff_sigma(self, ages):
-        """Per-axis puff σ (m) for an array of ages: σ² = σ₀² + 2·f_rel·K·age."""
+        """Per-axis puff σ (m) for an array of ages: σ² = σ₀² + 2·K_rel·age."""
         ages = np.asarray(ages, dtype=np.float64)
         return np.stack([np.sqrt(self.sigma_0**2 + 2.0*k*ages) for k in self.K_rel], axis=-1)
 
+    def _U_target_at_source(self):
+        alpha = self.wind_model.shear_exponent
+        z = max(float(self.source_pos[2]), 1.0)
+        return max(float(self.wind_base_speed) * (z / SHEAR_Z_REF) ** alpha, 0.1)
+
+    @property
+    def U_src(self):
+        """Mean horizontal wind speed (m/s) at the source, used to scale the LSM
+        intensities and T_L: a running mean (τ = U_SRC_TAU) of the resolved
+        wind sampled at the source once per second, initialised with the
+        target profile U_ref·(z_s/z_ref)^α.  The resolved wind is used because
+        ground drag makes it ~20% slower than the target at 10 m."""
+        if self._U_src is None:
+            self._U_src = self._U_target_at_source()
+        return max(self._U_src, 0.1)
+
+    U_SRC_TAU = 30.0       # s, running-mean time constant for U_src
+    U_SRC_EVERY = 1.0      # s, sampling interval
+
+    def _update_U_src(self):
+        wp.launch(sample_wind_point, dim=1, inputs=[
+            self.u0, wp.vec3(*[float(v) for v in self.source_pos]), float(self.dx), self._wind_probe])
+        u = self._wind_probe.numpy()[0]
+        speed = float(math.hypot(u[0], u[1]))
+        U = self.U_src
+        self._U_src = U + (self.U_SRC_EVERY / self.U_SRC_TAU) * (speed - U)
+
+    @property
+    def lsm_sigma(self):
+        """LSM velocity standard deviations (σ_u, σ_v, σ_w) in m/s."""
+        U = self.U_src
+        return (self.a_y * U, self.a_y * U, self.a_z * U)
+
+    @property
+    def lsm_TL(self):
+        """Lagrangian time scales (s) per axis, T_L,fit·LSM_U_FIT/U."""
+        f = LSM_U_FIT / self.U_src
+        return (self.TL_y * f, self.TL_y * f, self.TL_z * f)
+
+    def _ou_coeffs(self, dt):
+        sig, TL = self.lsm_sigma, self.lsm_TL
+        decay = [math.exp(-dt / T) for T in TL]
+        noise = [s_ * math.sqrt(1.0 - d * d) for s_, d in zip(sig, decay)]
+        return wp.vec3(*decay), wp.vec3(*noise)
+
     def set_stability_class(self, pg_class: str = "D"):
-        """Set K_D, lapse rate, and shear exponent from PG class (A–G)."""
+        """Set LSM intensities and T_L, lapse rate and shear exponent (A–F)."""
         pg_class = pg_class.upper()
-        if pg_class not in PASQUILL_GIFFORD_KD:
-            raise ValueError(f"Unknown PG class '{pg_class}'. Use A–G.")
-        kd = PASQUILL_GIFFORD_KD[pg_class]
-        self.K_D_X = kd["K_D_X"]
-        self.K_D_Y = kd["K_D_Y"]
-        self.K_D_Z = kd["K_D_Z"]
-        # Lapse rate for temperature-based buoyancy (NOAA READY ranges)
+        if pg_class not in PG_LSM:
+            raise ValueError(f"Unknown PG class '{pg_class}'. Use A–F.")
+        self.stability_class = pg_class
+        c = PG_LSM[pg_class]
+        self.a_y, self.a_z = c["a_y"], c["a_z"]
+        self.TL_y, self.TL_z = c["TL_y"], c["TL_z"]
+        # Lapse rate (used only by buoyancy_mode="rise")
         self.LAPSE_RATE = PG_LAPSE_RATES[pg_class]
         # Shear exponent for power-law vertical wind profile
         self.wind_model.shear_exponent = (PG_SHEAR_EXPONENTS[pg_class]
                                           if self.shear_exponent_override is None
                                           else self.shear_exponent_override)
-        # Legacy scalar K_d — max of anisotropic values (used by viz for puff sizing)
-        self.K_d = max(self.K_D_X, self.K_D_Y, self.K_D_Z)
 
     def _run_pressure_sor(self):
         """Red-Black SOR pressure solve with fixed iterations (no CPU-GPU syncs)."""
@@ -1318,8 +1439,10 @@ class HybridFluidPuffSimulation:
                     pos = pos + self._rng.standard_normal(3) * self.release_jitter
                 wp.launch(emit_puff_kernel, dim=1, inputs=[
                     self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
+                    self.puff_vel,
                     idx, wp.vec3(*[float(v) for v in pos]), float(self.sim_time), mass,
-                    self._counters])
+                    self._counters, wp.vec3(*self.lsm_sigma),
+                    int((self.seed*1000003 + 1000000007 + self.n_emitted) % 2147483647)])
                 self.next_puff_idx += 1
                 self.n_emitted += 1
             self._next_emit_time += self.emit_interval
@@ -1341,7 +1464,7 @@ class HybridFluidPuffSimulation:
         wp.launch(apply_global_wind, dim=shape,
                   inputs=[self.u0,float(wx),float(wy),float(wz),
                           _nudge_alpha,dt,float(shear_exp),self.turb_field,
-                          self.obstacle_mask])
+                          self.obstacle_mask,float(SHEAR_Z_REF),float(self.dx)])
         wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate),float(dt),3])
 
         # Zero velocity inside obstacles before advection
@@ -1381,7 +1504,7 @@ class HybridFluidPuffSimulation:
                   inputs=[self.u0,self.rho0,dt,
                           float(METHANE_BUOYANCY_ACCEL),self.RHO_DECAY_RATE,
                           float(self.LAPSE_RATE),float(self.T_SURFACE),float(self.dx),
-                          float(self.sigma_0),float(self.K_D_Z),float(self.sim_time)])
+                          float(self.sigma_0),float(self.k_rel),float(self.sim_time)])
 
         # Diffusion (obstacle-aware Neumann no-flux at surfaces)
         wp.launch(diffuse_rho, dim=shape,
@@ -1407,7 +1530,7 @@ class HybridFluidPuffSimulation:
         wp.launch(advect_puffs_rk2,dim=n,inputs=[
             self.puff_pos,self.puff_active,self.puff_emit_time,
             self.u0,self.sim_dt,self.dx,self.sim_time,
-            *[float(v) for v in self.L],
+            self.puff_vel,*self._ou_coeffs(self.sim_dt),
             self.n_spheres,self.sphere_centers,self.sphere_radii,
             self.n_cuboids,self.cuboid_centers,self.cuboid_extents,
             float(self.LAPSE_RATE),float(self.T_SURFACE),
@@ -1417,7 +1540,7 @@ class HybridFluidPuffSimulation:
         ])
         self._step_counter+=1
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
-            self.puff_pos,self.puff_active,
+            self.puff_pos,self.puff_active,self.puff_vel,
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
             self._counters,
         ])
@@ -1452,12 +1575,17 @@ class HybridFluidPuffSimulation:
         return conc.numpy()
 
     def step(self):
-        self.emit_puff(); self.step_wind(); self.step_puffs(); self.sim_time+=self.sim_dt
+        self.emit_puff(); self.step_wind()
+        if self.sim_time + 1e-9 >= self._next_U_update:
+            self._update_U_src(); self._next_U_update += self.U_SRC_EVERY
+        self.step_puffs(); self.sim_time+=self.sim_dt
 
-    def inject_puffs(self, positions, ages=None, masses=1.0):
+    def inject_puffs(self, positions, ages=None, masses=1.0, velocities=None):
         """Replace all puffs with the given set (tests/validation only).
 
-        positions: (N, 3) m; ages: (N,) s (default 1 s); masses: kg, scalar or (N,).
+        positions: (N, 3) m; ages: (N,) s (default 1 s); masses: kg, scalar or (N,);
+        velocities: (N, 3) LSM turbulent velocities (default: drawn from
+        N(0, lsm_sigma²) with a numpy RNG seeded by self.seed).
         N must be ≤ max_puffs. Puff σ follows the growth law for its age.
         """
         positions = np.asarray(positions, dtype=np.float32).reshape(-1, 3)
@@ -1470,6 +1598,10 @@ class HybridFluidPuffSimulation:
         act = np.zeros(self.max_puffs, np.int32); act[:n] = 1
         emt = np.zeros(self.max_puffs, np.float32); emt[:n] = self.sim_time - ages
         mas = np.zeros(self.max_puffs, np.float32); mas[:n] = masses
+        if velocities is None:
+            velocities = np.random.default_rng(self.seed).standard_normal((n, 3)) * np.array(self.lsm_sigma)
+        vel = np.zeros((self.max_puffs, 3), np.float32); vel[:n] = velocities
+        wp.copy(self.puff_vel, wp.array(vel, dtype=wp.vec3))
         wp.copy(self.puff_pos, wp.array(pos, dtype=wp.vec3))
         wp.copy(self.puff_active, wp.array(act, dtype=int))
         wp.copy(self.puff_emit_time, wp.array(emt, dtype=float))

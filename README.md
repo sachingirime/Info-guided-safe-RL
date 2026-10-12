@@ -7,7 +7,7 @@ Built on [NVIDIA Warp](https://developer.nvidia.com/warp), the environment coupl
 ## Features
 
 - **GPU-accelerated 3D fluid simulation** via NVIDIA Warp (64x32x32 grid, 4 m cells, 256x128x128 m domain)
-- **Lagrangian Gaussian puff model** (up to 2048 puffs in the env): RK2 advection on the resolved wind, seeded centroid noise, ground image, line-of-sight occlusion by obstacles
+- **Lagrangian Gaussian puff model** (up to 2048 puffs in the env): RK2 advection on the resolved wind plus a per-puff OU turbulent velocity (Lagrangian stochastic model calibrated to Briggs), ground image, line-of-sight occlusion by obstacles
 - **Pasquill-Gifford stability classes** (A-G) for turbulent diffusivity, shear exponent and lapse rate
 - **Methane sensor model** with bias, noise, first-order lag and soft sigmoid detection
 - **Mobile gas source** with Ornstein-Uhlenbeck drift
@@ -66,7 +66,9 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 | Argument | Default | Meaning |
 |---|---|---|
 | `seed` | `wind_seed` | Puff-noise RNG seed (the env derives one per episode from its RNG) |
-| `f_rel` | `0.5` | Share of K used for puff growth; the rest drives centroid noise |
+| `K_rel` | `0.2` | m²/s, relative puff growth σ² = σ₀² + 2·K_rel·age |
+| `wind_preset` | `"calibrated"` | `"calibrated"` (small resolved fluctuations, ≲3° meander) or `"meandering"` (pre-LSM amplitudes, harder RL) |
+| `turb_scale` | from preset | Multiplies all stochastic resolved-wind amplitudes |
 | `buoyancy_mode` | `"none"` | `"none"` (neutral gas) or `"rise"` |
 | `w_rise0` | `0.0` | Initial rise speed (m/s) for `"rise"`; decays as (σ₀/σ)³ |
 | `ground_drag_rate` | `2.4` | 1/s, ground drag in the lowest 3 cells |
@@ -92,12 +94,13 @@ python validation/validate_sim.py         # V0-V8, writes validation/results.jso
 ## Environment Details
 
 ### Wind Field
-Inviscid Stable Fluids on a 64x32x32 grid (4 m cells): semi-Lagrangian advection and a pressure projection (Red-Black SOR, 25 iterations), relaxed toward a stochastic target wind with time constant 1/α ≈ 0.33 s. The target is an OU mean wind, three OU turbulence layers, a coarse OU spatial perturbation field and Poisson gusts, shaped by a power-law shear profile with z normalised by the domain height. Obstacles are solid cells (u = 0) with Neumann pressure; the ground has w = 0 and dt-scaled drag; open faces have p = 0.
+Inviscid Stable Fluids on a 64x32x32 grid (4 m cells): semi-Lagrangian advection and a pressure projection (Red-Black SOR, 25 iterations), relaxed toward a stochastic target wind with time constant 1/α ≈ 0.33 s. The target is an OU mean wind, three OU turbulence layers, a coarse OU spatial perturbation field and Poisson gusts, shaped by a power-law shear profile u(z) = U_ref·(z/10 m)^α (U_ref = base speed at 10 m). Obstacles are solid cells (u = 0) with Neumann pressure; the ground has w = 0 and dt-scaled drag; open faces have p = 0.
 
 ### Gas Dispersion
 Lagrangian Gaussian puffs, one per `PUFF_PERIOD` with mass Q·`PUFF_PERIOD`:
 - RK2 advection on the trilinearly interpolated wind
-- Dispersion split by `f_rel`: puff growth σ² = σ₀² + 2·f_rel·K·age, seeded centroid noise ℓ = √(2(1−f_rel)K); the ensemble-mean plume spreads as σ₀² + 2K·t
+- Absolute dispersion: each puff carries a turbulent velocity v following an OU process (Thomson 1987) with σ_u = σ_v = a_y·U, σ_w = a_z·U from the Briggs near-field slopes and T_L fitted to Briggs σ(x) (`validation/fit_tl.py`); reflections flip v's normal component
+- Relative dispersion: puff growth σ² = σ₀² + 2·K_rel·age
 - Ground reflection by the method of images; removal at the open domain faces
 - Obstacles: puffs pushed 2 m out of solids; line-of-sight occlusion from puff centre to the sample point
 - Buoyancy off by default; optional decaying rise velocity for methane
@@ -113,7 +116,7 @@ Tag `pre-fix` = commit `1d30cdb`. Branch `sim-fix` changes:
 2. **Grid convention.** All samplers use cell centres (`p/dx − 0.5`), matching the obstacle mask and shear profile (pre-fix puffs and the env saw the wind shifted 2 m on every axis), and clamp to the grid edge correctly.
 3. **Emission.** One puff per interval (was two → 2Q), no release jitter (was 1.5 m), fixed emission schedule (float drift emitted every 7 frames at 0.2 s → Q 14% low), per-puff mass, overwrite/exit counters.
 4. **Seeded RNG.** Warp `rand_init`/`randn` per puff and step replaces a hash with correlated axes.
-5. **Dispersion counted once.** Puff growth uses f_rel·K and centroid noise (1−f_rel)·K (pre-fix used the full K for both → σ₀² + 4K·t).
+5. **Dispersion.** Pre-fix used the full K for both puff growth and a centroid random walk (σ₀² + 4K·t), and the class-D K row did not follow its own formula. Now: per-puff OU turbulent velocity calibrated to Briggs (A–F), relative growth K_rel = 0.2 m²/s; resolved-wind turbulence ×0.1 (`wind_preset="calibrated"`); shear referenced to 10 m instead of the 128 m domain top.
 6. **Buoyancy.** Off by default; `"rise"` is a decaying velocity. Pre-fix added the 4.55 m/s² methane acceleration as a velocity (median puff height 37 m for a 10 m source).
 7. **Ground drag** scaled by dt (was per frame).
 8. **Line-of-sight occlusion**: gas no longer leaks through obstacles.

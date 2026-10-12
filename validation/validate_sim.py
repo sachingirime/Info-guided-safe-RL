@@ -34,6 +34,7 @@ from scipy.optimize import curve_fit
 import stable_fluid_3d as sf
 from gaussian_puff_env import GaussianPuffEnv, SphereObstacle, CuboidObstacle
 import diag_state
+import fit_tl
 
 wp.config.quiet = True
 
@@ -120,8 +121,22 @@ def slender_plume(Q, U, ys, zs, ysrc, h, sy, sz):
             * (np.exp(-0.5 * (Z - h) ** 2 / sz ** 2) + np.exp(-0.5 * (Z + h) ** 2 / sz ** 2)))
 
 
+def briggs(x, pg="D"):
+    return fit_tl.BRIGGS_Y[pg](np.asarray(x, float)), fit_tl.BRIGGS_Z[pg](np.asarray(x, float))
+
+
 def briggs_D(x):
-    return 0.08 * x / np.sqrt(1 + 0.0001 * x), 0.06 * x / np.sqrt(1 + 0.0015 * x)
+    return briggs(x, "D")
+
+
+def lsm_sigma_analytic(sim, x, U):
+    """σ_y, σ_z of the mean plume at distance x for steady wind U:
+    σ² = σ0² + 2 K_rel t + 2 σ_v² T_L² (t/T_L − 1 + e^{−t/T_L}), t = x/U."""
+    t = x / U
+    sig, TL = sim.lsm_sigma, sim.lsm_TL
+    taylor = lambda s_, T: 2 * s_ ** 2 * T ** 2 * (t / T - 1 + np.exp(-t / T))
+    base = sim.sigma_0 ** 2 + 2 * sim.k_rel * t
+    return np.sqrt(base + taylor(sig[1], TL[1])), np.sqrt(base + taylor(sig[2], TL[2]))
 
 
 # ── V0: before/after ─────────────────────────────────────────────────────────
@@ -167,10 +182,11 @@ V1_U = 2.0
 V1_X = (25.0, 50.0, 100.0)
 V1_YS = np.arange(0.0, 128.0 + 0.5, 1.0)
 V1_ZS = np.arange(0.0, 100.0 + 0.5, 1.0)
+V1_KREL = (0.0, 0.2, 1.0)
 
 
-def v1_field(f_rel, spin=150.0, avg=180.0, seed=1):
-    sim = make_sim(V1_SRC, V1_U, Q=1.0, emit=0.2, seed=seed, f_rel=f_rel, steady_wind=True,
+def v1_field(k_rel, spin=150.0, avg=180.0, seed=1):
+    sim = make_sim(V1_SRC, V1_U, Q=1.0, emit=0.2, seed=seed, K_rel=k_rel, steady_wind=True,
                    shear_exponent=0.0, ground_drag_rate=0.0, buoyancy_mode="none")
     pts = [plane(V1_SRC[0] + d, V1_YS, V1_ZS) for d in V1_X]
     P = np.concatenate([p for p, _ in pts])
@@ -190,25 +206,25 @@ def v1(avg=180.0):
                      "spin_s": 150.0, "avg_s": avg, "sample_dt": 0.5,
                      "y_range": [0, 128], "z_range": [0, 100], "grid_m": 1.0},
            "criterion": "σ_y, σ_z within 5%; centerline C within 10%; flux within 5% of Q; n_overwritten == 0",
+           "reference": "slender plume with ground image; σ² = σ0² + 2 K_rel t + 2 σ_v² T_L² (t/T_L − 1 + "
+                        "e^{−t/T_L}), t = x/U, σ_v and T_L from the sim's class-D LSM at U = 2 m/s",
            "note": ("Plan specified y ± 30 m, z ≤ 60 m and a 180 s average. y/z ranges were widened so the "
-                    "flux integral captures the plume (σ_y(100 m) ≈ 19.5 m). With 180 s, f_rel=0 at 100 m "
-                    "had centreline error −12.8% (sampling noise: 2 m puffs, ~20 m meander); at 1800 s it is "
-                    "+1.6%, so the default average is 1800 s. σ: second moments of the sim and the analytic "
-                    "field on the same grid."),
+                    "flux integral captures the plume. A 1800 s average is used (180 s left sampling noise "
+                    "of ~13% at one centreline point in the pre-LSM f_rel=0 run). K_rel ∈ {0, 0.2, 1} "
+                    "shows puff growth and LSM spread add without double counting. σ: second moments of "
+                    "the sim and the analytic field on the same grid."),
            "runs": {}}
     dy = dz = 1.0
     ys, zs = V1_YS, V1_ZS
     jy = int(np.argmin(abs(ys - V1_SRC[1]))); kz = int(np.argmin(abs(zs - V1_SRC[2])))
     all_ok = True
     profiles = {}
-    for f_rel in (0.0, 0.5, 1.0):
+    for f_rel in V1_KREL:
         fields, sim = v1_field(f_rel, avg=avg)
-        K = np.array([sim.K_D_X, sim.K_D_Y, sim.K_D_Z])
         rows = []
         ok_f = sim.n_overwritten == 0
         for d, C in zip(V1_X, fields):
-            sy = np.sqrt(sim.sigma_0 ** 2 + 2 * K[1] * d / V1_U)
-            sz = np.sqrt(sim.sigma_0 ** 2 + 2 * K[2] * d / V1_U)
+            sy, sz = lsm_sigma_analytic(sim, d, V1_U)
             A = slender_plume(1.0, V1_U, ys, zs, V1_SRC[1], V1_SRC[2], sy, sz)
             # Same functionals on sim and analytic fields (same grid/truncation)
             sig = lambda F: (moment_sigma(F.sum(1) * dz, ys)[0], moment_sigma(F.sum(0) * dy, zs)[0])
@@ -225,25 +241,28 @@ def v1(avg=180.0):
             ok_f &= r["pass"]
             rows.append(r)
             profiles[(f_rel, d)] = (C[:, kz], C[jy, :], A[:, kz], A[jy, :])
-            print(f"  V1 f_rel={f_rel:.1f} x-xs={d:5.0f}: σy {sy_s:6.2f}/{sy_a:6.2f} ({100*r['err_sigma_y']:+.1f}%)  "
+            print(f"  V1 K_rel={f_rel:.1f} x-xs={d:5.0f}: σy {sy_s:6.2f}/{sy_a:6.2f} ({100*r['err_sigma_y']:+.1f}%)  "
                   f"σz {sz_s:6.2f}/{sz_a:6.2f} ({100*r['err_sigma_z']:+.1f}%)  "
                   f"C_cl {100*r['err_centerline']:+.1f}%  flux {100*r['err_flux']:+.1f}%  {verdict(r['pass'])}")
-        out["runs"][str(f_rel)] = {"rows": rows, "n_overwritten": sim.n_overwritten,
-                                   "n_emitted": sim.n_emitted, "n_exited": sim.n_exited, "pass": bool(ok_f)}
+        out["runs"][f"K_rel={f_rel:g}"] = {"rows": rows, "n_overwritten": sim.n_overwritten,
+                                   "n_emitted": sim.n_emitted, "n_exited": sim.n_exited,
+                                   "U_src": sim.U_src, "lsm_sigma": list(sim.lsm_sigma),
+                                   "lsm_TL": list(sim.lsm_TL), "pass": bool(ok_f)}
         all_ok &= ok_f
     out["pass"] = bool(all_ok)
     print(f"V1 analytic plume: {verdict(all_ok)}")
 
     fig, axs = plt.subplots(2, 3, figsize=(7.2, 4.4))
     for j, d in enumerate(V1_X):
-        for i, f_rel in enumerate((0.0, 0.5, 1.0)):
+        for i, f_rel in enumerate(V1_KREL):
             cy, cz, ay, az = profiles[(f_rel, d)]
-            axs[0, j].plot(ys - V1_SRC[1], cy * 1e3, color=C_SERIES[i], label=f"sim, $f_{{rel}}$={f_rel:g}")
+            axs[0, j].plot(ys - V1_SRC[1], cy * 1e3, color=C_SERIES[i], label=f"sim, K$_{{rel}}$={f_rel:g} m²/s")
             axs[1, j].plot(cz * 1e3, zs, color=C_SERIES[i])
-        axs[0, j].plot(ys - V1_SRC[1], ay * 1e3, "--", color=C_REF, lw=1.2, label="analytic")
-        axs[1, j].plot(az * 1e3, zs, "--", color=C_REF, lw=1.2)
+            axs[0, j].plot(ys - V1_SRC[1], ay * 1e3, "--", color=C_REF, lw=1.0,
+                           label="analytic" if i == 0 else None)
+            axs[1, j].plot(az * 1e3, zs, "--", color=C_REF, lw=1.0)
         axs[0, j].set_title(f"x − x$_s$ = {d:.0f} m")
-        axs[0, j].set_xlim(-60, 60); axs[1, j].set_ylim(0, 80)
+        axs[0, j].set_xlim(-40, 40); axs[1, j].set_ylim(0, 70)
         axs[0, j].set_xlabel("y − y$_s$ (m)"); axs[1, j].set_xlabel("C (g/m³)")
     axs[0, 0].set_ylabel("C at z = h (g/m³)"); axs[1, 0].set_ylabel("z (m), at y = y$_s$")
     axs[0, 0].legend(frameon=False, loc="upper left")
@@ -270,34 +289,35 @@ def v2():
 V3_SRC = (20.0, 64.0, 10.0)
 V3_U = 3.0
 V3_X = (25.0, 50.0, 100.0, 150.0, 200.0)
+V3_BAND = (0.67, 1.5)
 V4_X = (25.0, 50.0, 100.0)
-V4_OFF_DY = (2.0, 4.0, 6.0, 8.0, 12.0, 16.0)
+V4_OFF_DY = (1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0)
 
 
-def v3_v4(spin=150.0, avg=600.0, seed=1, sim_kwargs=None):
+def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwargs=None):
+    """Mean plume σ_y, σ_z vs Briggs for one class (defaults otherwise)."""
     sim_kwargs = sim_kwargs or {}
-    # 4096 puffs: slow near-ground puffs outlive a 1024-slot ring buffer
-    # (1024 × 0.2 s = 205 s) at default turbulence, and the lost mass would bias σ.
-    sim = make_sim(V3_SRC, V3_U, Q=1.0, emit=0.2, seed=seed, max_puffs=4096, **sim_kwargs)
-    ys, zs = V1_YS, V1_ZS
+    # 4096 puffs: slow near-ground puffs can outlive a short ring buffer
+    # (1024 × 0.2 s = 205 s), and lost mass would bias σ.
+    sim = make_sim(V3_SRC, V3_U, Q=1.0, emit=0.2, seed=seed, pg=pg, max_puffs=4096, **sim_kwargs)
+    ys, zs = V1_YS, np.arange(0.0, 80.0 + 0.25, 0.5)
     pts = [plane(V3_SRC[0] + d, ys, zs) for d in V3_X]
     P = np.concatenate([p for p, _ in pts])
     acc = np.zeros(len(P)); n = [0]
     probes = [[V3_SRC[0] + d, V3_SRC[1], V3_SRC[2]] for d in V4_X]
     probes += [[V3_SRC[0] + 50.0, V3_SRC[1] + dy, V3_SRC[2]] for dy in V4_OFF_DY]
     probes = np.array(probes, np.float32)
-    series = []
+    series, U_hist = [], []
     k_avg = int(round(0.5 / sim.frame_dt)); k_ts = int(round(0.1 / sim.frame_dt))
 
     run(sim, spin)
     for i in range(int(round(avg / sim.frame_dt))):
         sim.step()
         if (i + 1) % k_avg == 0:
-            acc[:] += sim.query_concentration(P); n[0] += 1
-        if (i + 1) % k_ts == 0:
+            acc[:] += sim.query_concentration(P); n[0] += 1; U_hist.append(sim.U_src)
+        if record_series and (i + 1) % k_ts == 0:
             series.append(sim.query_concentration(probes))
     fields = (acc / n[0]).reshape(len(V3_X), *pts[0][1])
-    series = np.array(series)
 
     kz = int(np.argmin(abs(zs - V3_SRC[2])))
     rows = []
@@ -306,67 +326,55 @@ def v3_v4(spin=150.0, avg=600.0, seed=1, sim_kwargs=None):
         jy = int(np.argmin(abs(ys - yc)))
         sz_fit = fit_reflected(zs, C[jy, :], V3_SRC[2])
         sy_mom, _ = moment_sigma(C[:, kz], ys)
-        by, bz = briggs_D(d)
+        by, bz = briggs(d, pg)
         rows.append({"x_minus_xs": d, "sigma_y_sim": sy_fit, "sigma_z_sim": sz_fit,
                      "sigma_y_moment": sy_mom, "plume_center_y": yc,
                      "sigma_y_briggs": float(by), "sigma_z_briggs": float(bz),
-                     "ratio_y": sy_fit / by, "ratio_z": sz_fit / bz})
-    in_range = [r for r in rows if 50.0 <= r["x_minus_xs"] <= 200.0]
-    ok = all(0.67 <= r["ratio_y"] <= 1.5 and 0.67 <= r["ratio_z"] <= 1.5 for r in in_range)
+                     "ratio_y": sy_fit / float(by), "ratio_z": sz_fit / float(bz)})
+    ok = all(V3_BAND[0] <= r["ratio_y"] <= V3_BAND[1] and V3_BAND[0] <= r["ratio_z"] <= V3_BAND[1]
+             for r in rows)
     ok_ow = sim.n_overwritten == 0
     for r in rows:
-        print(f"  V3 x-xs={r['x_minus_xs']:5.0f}: σy {r['sigma_y_sim']:6.2f} vs {r['sigma_y_briggs']:6.2f} "
+        print(f"  V3[{pg}] x-xs={r['x_minus_xs']:5.0f}: σy {r['sigma_y_sim']:6.2f} vs {r['sigma_y_briggs']:6.2f} "
               f"(×{r['ratio_y']:.2f})   σz {r['sigma_z_sim']:6.2f} vs {r['sigma_z_briggs']:6.2f} (×{r['ratio_z']:.2f})")
-    print(f"V3 Pasquill–Gifford (50–200 m within [0.67, 1.5]): {verdict(ok and ok_ow)}  "
-          f"(n_overwritten={sim.n_overwritten})")
+    print(f"V3[{pg}] Briggs (25–200 m within {list(V3_BAND)}): {verdict(ok and ok_ow)}  "
+          f"(U_src {np.mean(U_hist):.2f} m/s, n_overwritten={sim.n_overwritten})")
+    out = {"class": pg,
+           "setup": {"source": V3_SRC, "U_ref_10m": V3_U, "spin_s": spin, "avg_s": avg, "max_puffs": 4096,
+                     "sim_kwargs": dict(sim_kwargs), "wind_preset": sim.wind_preset,
+                     "turb_scale": sim.turb_scale, "K_rel": sim.k_rel, "sigma_0": sim.sigma_0,
+                     "U_src_mean": float(np.mean(U_hist)), "lsm_sigma": list(sim.lsm_sigma),
+                     "lsm_TL": list(sim.lsm_TL), "class_table": {k: v for k, v in sf.PG_LSM[pg].items()}},
+           "rows": rows, "n_overwritten": sim.n_overwritten, "n_emitted": sim.n_emitted,
+           "pass": bool(ok and ok_ow)}
+    return out, np.array(series), sim
 
-    v3 = {"setup": {"source": V3_SRC, "U": V3_U, "class": "D", "spin_s": spin, "avg_s": avg,
-                    "sim_kwargs": {k: v for k, v in sim_kwargs.items()},
-                    "f_rel": sim.f_rel, "K": [sim.K_D_X, sim.K_D_Y, sim.K_D_Z],
-                    "turb_ou_sigma": sim._turb_ou_sigma,
-                    "wind_ou_sigma": sim.wind_model._sigma.tolist(),
-                    "turb_layer_sigmas": list(sim.wind_model._turb_sigmas)},
-          "rows": rows, "n_overwritten": sim.n_overwritten, "n_emitted": sim.n_emitted,
-          "pass": bool(ok and ok_ow),
-          "criterion": "sim/Briggs-D ratio of σ_y and σ_z within [0.67, 1.5] for 50–200 m; n_overwritten == 0",
-          "note": "σ_y: Gaussian fit to C(y, z=h); σ_z: ground-reflected Gaussian fit (h fixed) at the "
-                  "fitted plume centre. Constant-K puffs grow as √x while Briggs is ~linear at short range. "
-                  "max_puffs=4096 (1024 overwrote 838 puffs: slow near-ground puffs live > 205 s). "
-                  "Shear is normalised by the 128 m domain height, so U=3 m/s gives ≈1.6 m/s at z=10 m."}
-    sweep_path = os.path.join(HERE, "v3_tuning_sweep.json")
-    if os.path.exists(sweep_path):
-        with open(sweep_path) as f:
-            v3["tuning_sweep"] = json.load(f)
-        v3["tuning_conclusion"] = (
-            "No setting of turb_scale ∈ {1, 0.5, 0.25, 0.1}, K (table, Briggs-200 m derived, two smaller "
-            "sets) or f_rel ∈ {0.5, 1} puts both 50 m and 200 m inside [0.67, 1.5]: lowering K enough for "
-            "50 m (ratio 1.6 at K_y=0.47, K_z=0.2) pushes 200 m to 0.74-0.79 and falling. Constant-K puff "
-            "growth (σ² = σ0² + 2K·t) cannot follow Briggs' near-linear σ(x) over 50-200 m. Defaults left "
-            "unchanged; not forced (per plan).")
 
-    # σ vs x figure
-    xs = np.linspace(10, 250, 200)
-    by, bz = briggs_D(xs)
-    K = v3["setup"]["K"]
+def sigma_figure(results, name):
     fig, axs = plt.subplots(1, 2, figsize=(6.6, 2.8))
-    for ax, key, ref, k, lab in [(axs[0], "sigma_y_sim", by, K[1], "σ$_y$"),
-                                 (axs[1], "sigma_z_sim", bz, K[2], "σ$_z$")]:
-        ax.plot(xs, ref, "-", color=C_REF, lw=1.2, label="Briggs open country, class D")
-        ax.fill_between(xs, ref * 0.67, ref * 1.5, color=C_REF, alpha=0.08, lw=0, label="pass band ×[0.67, 1.5]")
-        ax.plot(xs, np.sqrt(4 + 2 * k * xs / V3_U), ":", color=C_MUTED, lw=1.2,
-                label="puff law √(σ₀²+2Kx/U), U = 3 m/s")
-        ax.plot([r["x_minus_xs"] for r in rows], [r[key] for r in rows], "o", color=C_SERIES[0],
-                ms=6, mec="white", mew=1, label="sim (mean plume)")
+    xs = np.linspace(10, 250, 200)
+    for ci, res in enumerate(results):
+        pg = res["class"]
+        by, bz = briggs(xs, pg)
+        col = C_SERIES[ci % 3]
+        for ax, key, ref in ((axs[0], "sigma_y_sim", by), (axs[1], "sigma_z_sim", bz)):
+            ax.plot(xs, ref, "-", color=col, lw=1.2, alpha=0.9, label=f"Briggs {pg}")
+            ax.fill_between(xs, ref * V3_BAND[0], ref * V3_BAND[1], color=col, alpha=0.08, lw=0)
+            ax.plot([r["x_minus_xs"] for r in res["rows"]], [r[key] for r in res["rows"]], "o", color=col,
+                    ms=6, mec="white", mew=1, label=f"sim {pg}")
+    for ax, lab in ((axs[0], "σ$_y$"), (axs[1], "σ$_z$")):
         ax.set_xscale("log"); ax.set_yscale("log")
         ax.set_xlabel("x − x$_s$ (m)"); ax.set_ylabel(f"{lab} (m)")
-    axs[1].legend(frameon=False, fontsize=7, loc="lower right")
+    axs[0].legend(frameon=False, fontsize=7, loc="upper left")
+    fig.text(0.99, 0.01, f"shaded: pass band ×[{V3_BAND[0]}, {V3_BAND[1]}]", ha="right", fontsize=7, color=C_MUTED)
     fig.tight_layout()
-    save_fig(fig, "v3_sigma_vs_x")
+    save_fig(fig, name)
 
-    # V4 statistics
+
+def v4_stats(series, rows, avg):
     sy50 = next(r["sigma_y_sim"] for r in rows if r["x_minus_xs"] == 50.0)
     j_off = int(np.argmin(abs(np.array(V4_OFF_DY) - sy50)))
-    names = [f"centerline x−xs={d:.0f} m" for d in V4_X] + [f"off-axis x−xs=50 m, y−ys={V4_OFF_DY[j_off]:.0f} m"]
+    names = [f"centreline x−xs={d:.0f} m" for d in V4_X] + [f"off-axis x−xs=50 m, y−ys={V4_OFF_DY[j_off]:.0f} m"]
     cols = list(range(len(V4_X))) + [len(V4_X) + j_off]
     stats = []
     for name, c in zip(names, cols):
@@ -379,40 +387,66 @@ def v3_v4(spin=150.0, avg=600.0, seed=1, sim_kwargs=None):
         print(f"  V4 {name:38s} mean {mean:.3e}  γ(C>0.1·mean) {stats[-1]['intermittency']:.2f}  "
               f"p99/mean {stats[-1]['peak_to_mean_p99']:.2f}  CoV {stats[-1]['cov']:.2f}")
     sanity = stats[-1]["intermittency"] < stats[1]["intermittency"]
-    print(f"V4 intermittency (report; off-axis more intermittent than centerline at 50 m: {sanity})")
-    v4 = {"sample_hz": 10, "duration_s": avg, "stats": stats, "off_axis_dy": V4_OFF_DY[j_off],
-          "sigma_y_50m_sim": sy50, "sanity_offaxis_more_intermittent": bool(sanity),
-          "note": "intermittency factor = fraction of time C > 0.1·mean (lower = more intermittent)"}
+    print(f"V4 intermittency (report; off-axis more intermittent than centreline at 50 m: {sanity})")
 
     fig, ax = plt.subplots(figsize=(4.2, 2.8))
-    for i, (s, c) in enumerate(zip(stats, cols)):
-        ts = series[:, c] / max(s["mean"], 1e-30)
-        bins = np.logspace(-2, 1, 46)
-        h, e = np.histogram(ts, bins=bins, density=False)
-        frac = h / len(series[:, c])
-        color = (C_SERIES + [C_REF])[i]
-        ax.step(np.sqrt(e[1:] * e[:-1]), frac, where="mid", color=color, lw=1.4,
-                ls="-" if i < 3 else "--", label=s["point"].replace("centerline ", "").replace("off-axis ", "off-axis "))
-    ax.set_xscale("log"); ax.set_xlim(1e-2, 10)
+    bins = np.logspace(-3, 1.5, 46)
+    for i, (st, c) in enumerate(zip(stats, cols)):
+        x = series[:, c] / max(st["mean"], 1e-30)
+        h, e = np.histogram(x, bins=bins)
+        ax.step(np.sqrt(e[1:] * e[:-1]), h / len(x), where="mid", color=(C_SERIES + [C_REF])[i], lw=1.4,
+                ls="-" if i < 3 else "--", label=st["point"].replace("centreline ", ""))
+    ax.set_xscale("log"); ax.set_xlim(bins[0], bins[-1])
     ax.set_xlabel("C / mean C"); ax.set_ylabel("fraction of samples")
     ax.legend(frameon=False, fontsize=7)
     fig.tight_layout()
     save_fig(fig, "v4_pdfs")
-    return v3, v4
+    return {"sample_hz": 10, "duration_s": avg, "stats": stats, "off_axis_dy": V4_OFF_DY[j_off],
+            "sigma_y_50m_sim": sy50, "sanity_offaxis_more_intermittent": bool(sanity),
+            "note": "intermittency factor γ = fraction of time C > 0.1·mean (lower = more intermittent)"}
+
+
+def v3_v4(avg=600.0, spot=("A", "F")):
+    d, series, _ = v3_run("D", avg=avg, record_series=True)
+    d["criterion"] = (f"sim/Briggs ratio of σ_y and σ_z within {list(V3_BAND)} over 25–200 m (class D); "
+                      "n_overwritten == 0")
+    d["note"] = ("σ_y: Gaussian fit to C(y, z=h); σ_z: ground-reflected Gaussian fit (h fixed) at the fitted "
+                 "plume centre. Puff transport: OU turbulent velocity per puff (Thomson 1987), σ_v = a·U_src, "
+                 "T_L from validation/tl_fit.json scaled by 3/U_src; U_src = running mean of the resolved "
+                 "wind at the source. Turbulence homogeneous (σ, T_L constant with height): the OU model "
+                 "satisfies Thomson's well-mixed condition without a drift term.")
+    spots = {}
+    for pg in spot:
+        spots[pg], _, _ = v3_run(pg, avg=avg)
+    d["spot_checks"] = spots
+    tl_path = os.path.join(HERE, "tl_fit.json")
+    if os.path.exists(tl_path):
+        with open(tl_path) as f:
+            d["tl_fit"] = json.load(f)
+    pre = os.path.join(HERE, "v3_tuning_sweep.json")
+    if os.path.exists(pre):
+        with open(pre) as f:
+            d["pre_lsm_tuning_sweep"] = json.load(f)
+        d["pre_lsm_conclusion"] = ("Constant-K random walk (pre-LSM): no turb_scale/K/f_rel setting fitted "
+                                   "Briggs D at both 50 and 200 m; replaced by the LSM (Step 11b).")
+    sigma_figure([d], "v3_sigma_vs_x")
+    sigma_figure([spots[p] for p in spot], "v3_spotcheck_" + "".join(spot))
+    v4 = v4_stats(series, d["rows"], avg)
+    return d, v4
 
 
 # ── V5: determinism ──────────────────────────────────────────────────────────
 
 def v5():
-    a, _ = v1_field(0.5, spin=60.0, avg=60.0, seed=11)
-    b, _ = v1_field(0.5, spin=60.0, avg=60.0, seed=11)
-    c, _ = v1_field(0.5, spin=60.0, avg=60.0, seed=12)
+    a, _ = v1_field(0.2, spin=60.0, avg=60.0, seed=11)
+    b, _ = v1_field(0.2, spin=60.0, avg=60.0, seed=11)
+    c, _ = v1_field(0.2, spin=60.0, avg=60.0, seed=12)
     same = bool(np.array_equal(a, b))
     diff = float(np.abs(a - c).max())
     ok = same and diff > 0
     print(f"V5 determinism: same seed identical={same}, different seed max|ΔC|={diff:.3e}  {verdict(ok)}")
     return {"same_seed_identical": same, "diff_seed_max_abs": diff, "pass": ok,
-            "setup": "V1 configuration, f_rel=0.5, 60 s spin-up + 60 s average (shortened from V1)"}
+            "setup": "V1 configuration, K_rel=0.2, 60 s spin-up + 60 s average (shortened from V1)"}
 
 
 # ── V6: line of sight ────────────────────────────────────────────────────────
@@ -553,7 +587,14 @@ def main():
     if "V6" in todo: results["V6"] = v6()
     if "V7" in todo: results["V7"] = v7()
     if "V8" in todo: results["V8"] = v8()
-    results["_meta"] = {"device": wp.get_device().name, "warp": wp.__version__,
+    try:
+        import subprocess
+        smi = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
+    except Exception:
+        smi = []
+    results["_meta"] = {"device": wp.get_device().name, "warp": wp.__version__, "numpy": np.__version__,
+                        "nvidia_smi": smi, "cuda_driver": getattr(wp.context.runtime, "driver_version", None),
                         "last_run": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "last_run_tests": todo, "last_run_wall_s": round(time.time() - t_start, 1)}
 

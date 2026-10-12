@@ -117,13 +117,13 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--duration", type=float, default=120.0)
     ap.add_argument("--legacy", action="store_true",
-                    help="fixed code only: use_grid_gas=True, f_rel=1, old drag/jitter/emission")
+                    help="fixed code only: use_grid_gas=True, old drag/jitter/emission")
     args = ap.parse_args()
 
     wp.init()
     kwargs = {}
     if args.legacy:
-        kwargs = dict(use_grid_gas=True, f_rel=1.0, ground_drag_rate=2.4,
+        kwargs = dict(use_grid_gas=True, ground_drag_rate=2.4,
                       release_jitter=1.5, legacy_emission=True)
     sim = make_sim(**kwargs)
     res = diagnose(sim, duration=args.duration)

@@ -19,8 +19,7 @@ import warp as wp
 from stable_fluid_3d import (
     HybridFluidPuffSimulation,
     NX, NY, NZ, DX as FLUID_DX,
-    PASQUILL_GIFFORD_KD,
-    PASQUILL_GIFFORD_LANGEVIN,
+    PG_LSM,
 )
 
 
@@ -260,7 +259,7 @@ class GaussianPuffEnv(gym.Env):
                  warmup_s: float = None, **sim_kwargs):
         """
         sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
-        f_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
+        K_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
         enable_turbulence, enable_gusts, steady_wind, shear_exponent, use_los).
         """
         super().__init__()

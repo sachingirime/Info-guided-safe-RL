@@ -102,7 +102,7 @@ def test_rng():
     N = 100_000
     sim = sf.HybridFluidPuffSimulation(wind_base_speed=0.0, steady_wind=True, max_puffs=N, seed=3)
     p0 = np.tile(np.array([128.0, 64.0, 64.0], np.float32), (N, 1))
-    sim.inject_puffs(p0)
+    sim.inject_puffs(p0, velocities=np.zeros((N, 3)))   # displacement = one OU noise draw
     sim.step_puffs()
     dp = sim.puff_pos.numpy() - p0
     r = np.corrcoef(dp.T)
@@ -110,10 +110,34 @@ def test_rng():
     print(f"✓ RNG (|corr| ≤ {max(abs(r[0,1]), abs(r[0,2]), abs(r[1,2])):.4f})")
 
 
+def test_lsm():
+    """LSM turbulent velocity: stationary variance σ² and autocorrelation e^{−τ/T_L}."""
+    N = 20_000
+    sim = sf.HybridFluidPuffSimulation(wind_center_angle=0.0, wind_base_speed=3.0, steady_wind=True,
+                                       shear_exponent=0.0, max_puffs=N, seed=9)
+    sim.source_pos = np.array([10.0, 64.0, 64.0], np.float32)
+    sim.set_obstacles([], [])
+    sig, TL = np.array(sim.lsm_sigma), np.array(sim.lsm_TL)
+    sim.inject_puffs(np.tile([10.0, 64.0, 64.0], (N, 1)))
+    v0 = sim.puff_vel.numpy().astype(np.float64)
+    lag = 0.5 * TL[2]                       # half the vertical T_L
+    for _ in range(int(round(lag / sim.sim_dt))):
+        sim.step_puffs(); sim.sim_time += sim.sim_dt
+    act = sim.puff_active.numpy() == 1
+    v1 = sim.puff_vel.numpy().astype(np.float64)
+    var_ratio = v1[act].var(0) / sig ** 2
+    rho = np.array([np.corrcoef(v0[act, a], v1[act, a])[0, 1] for a in range(3)])
+    rho_ref = np.exp(-lag / TL)
+    assert act.mean() > 0.95, act.mean()
+    assert np.all(abs(var_ratio - 1) < 0.04), var_ratio
+    assert np.all(abs(rho - rho_ref) < 0.03), (rho, rho_ref)
+    print(f"✓ LSM (var/σ² = {np.round(var_ratio, 3)}, ρ(τ) = {np.round(rho, 3)} vs {np.round(rho_ref, 3)})")
+
+
 def test_los():
     """V6: a sphere between puff and sensor blocks the puff."""
     def conc(use_los, with_sphere):
-        sim = sf.HybridFluidPuffSimulation(max_puffs=1, use_los=use_los, f_rel=0.0)
+        sim = sf.HybridFluidPuffSimulation(max_puffs=1, use_los=use_los, K_rel=0.0)
         sim.sigma_0 = 8.0   # σ=2 m would be culled at 10σ regardless of the sphere
         sim.set_obstacles([SphereObstacle(np.array([60.0, 64.0, 20.0]), 4.0)] if with_sphere else [], [])
         sim.inject_puffs([[50.0, 64.0, 20.0]])
@@ -125,7 +149,7 @@ def test_los():
 
 
 def _integrate_puff(z0, sigma, lo_z):
-    sim = sf.HybridFluidPuffSimulation(max_puffs=1, f_rel=0.0)
+    sim = sf.HybridFluidPuffSimulation(max_puffs=1, K_rel=0.0)
     sim.sigma_0 = sigma
     sim.set_obstacles([], [])
     c0 = np.array([128.0, 64.0, z0])
@@ -150,7 +174,7 @@ def test_kernel_mass():
     print(f"✓ kernel mass (free {m_free:.4f}, ground {m_ground:.4f})")
 
 
-TESTS = [test_obs_dimensions, test_emission_count, test_rng, test_los,
+TESTS = [test_obs_dimensions, test_emission_count, test_rng, test_lsm, test_los,
          test_kernel_mass, test_no_grid_gas, test_determinism]
 
 if __name__ == "__main__":
