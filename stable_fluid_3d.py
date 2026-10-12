@@ -37,24 +37,40 @@ import numpy as np
 #   σ_u = σ_v = a_y·U,  σ_w = a_z·U,   U = mean wind at source height.
 # T_L (s) fitted offline (validation/fit_tl.py → tl_fit.json) so that
 #   σ²(x) = σ₀² + 2·K_rel·t + 2σ_v²T_L²(t/T_L − 1 + e^{−t/T_L}),  t = x/U
-# matches Briggs σ_y, σ_z over x = 25–200 m at U = LSM_U_FIT, with σ₀ = 2 m,
-# K_rel = 0.2 m²/s, T_L ∈ [5, 2000] s.  The sim uses T_L·LSM_U_FIT/U, so the
+# matches Briggs σ_y, σ_z over x = 25–200 m at U = LSM_U_FIT, with σ₀ = 1 m,
+# K_rel = 0.05 m²/s, T_L ∈ [5, 2000] s.  The sim uses T_L·LSM_U_FIT/U, so the
 # Taylor term depends on x only (surface-layer scaling T_L ∝ z/u*, u* ∝ U).
 # Fit residuals (sim/Briggs over 25–200 m, from fit_tl.py):
-#   A y [0.98,1.11] z [0.98,1.13]   B y [0.97,1.20] z [0.95,1.34]
-#   C y [0.95,1.40] z [0.91,1.67]   D y [0.91,1.67] z [0.85,2.06]
-#   E y [0.86,2.04] z [1.06,3.72]   F y [0.79,2.82] z [1.88,6.87]
-#   (E/F σ_z and F σ_y hit the 5 s lower bound: σ₀ = 2 m exceeds Briggs at short range.)
+#   A y [1.00,1.03] z [1.00,1.04]   B y [0.99,1.05] z [0.99,1.09]
+#   C y [0.98,1.11] z [0.97,1.20]   D y [0.97,1.20] z [0.95,1.35]
+#   E y [0.95,1.34] z [0.86,2.05]   F y [0.91,1.67] z [1.00,3.50]
+#   (F σ_z hits the 5 s lower bound: Briggs F σ_z(25 m) = 0.4 m < σ₀.  Briggs'
+#   formulas are stated for 100 m–10 km; 25–100 m is extrapolation.)
+# (First fit used σ₀ = 2 m, K_rel = 0.2: class D failed at 25 m because
+# σ₀ > Briggs D σ_z(25 m) = 1.47 m; see validation/results.json.)
+#
+# Release correlation (Gifford 1959 meandering plume; cf. GADEN/Farrell, where
+# all filaments share one time-varying wind): the velocity of each new puff is
+# σ·ζ with ζ an OU process in release time, corr(ζ_n, ζ_{n−1}) = e^{−τ_e/T_E}.
+# Successive releases sample the velocity at a *fixed point* (the source), so
+# the correlation time is the Eulerian scale T_E = T_L/β with the Hay–Pasquill
+# ratio β = γ/i, i = σ/U (= a_y or a_z); Anfossi et al. (2006, Atmos. Environ.
+# 40:326) confirm β ∝ 1/i.  γ = HP_GAMMA = 0.6 is an order-one constant (the
+# literature value varies with regime; not tuned here).
+# Consecutive puffs ride the same large eddy, so the instantaneous plume
+# meanders coherently; each puff's own velocity is still N(0, σ²) and OU in
+# time, so the mean plume (V1/V3) is unchanged.
 # Puff growth σ_puff² = σ₀² + 2·K_rel·age represents relative dispersion only
 # (Farrell et al. 2002; GADEN, Monroy et al. 2017).
 LSM_U_FIT = 3.0          # m/s, reference wind of the T_L fit
+HP_GAMMA = 0.6           # Hay–Pasquill constant in β = T_L/T_E = γ/i
 PG_LSM = {
-    "A": {"a_y": 0.22, "a_z": 0.20,  "TL_y": 321.9, "TL_z": 382.9, "desc": "Very unstable"},
-    "B": {"a_y": 0.16, "a_z": 0.12,  "TL_y": 198.4, "TL_z": 139.3, "desc": "Unstable"},
-    "C": {"a_y": 0.11, "a_z": 0.08,  "TL_y": 103.6, "TL_z":  51.5, "desc": "Slightly unstable"},
-    "D": {"a_y": 0.08, "a_z": 0.06,  "TL_y":  55.3, "TL_z":  14.7, "desc": "Neutral (default)"},
-    "E": {"a_y": 0.06, "a_z": 0.03,  "TL_y":  27.7, "TL_z":   5.0, "desc": "Slightly stable"},
-    "F": {"a_y": 0.04, "a_z": 0.016, "TL_y":   5.0, "TL_z":   5.0, "desc": "Stable"},
+    "A": {"a_y": 0.22, "a_z": 0.20,  "TL_y": 686.7, "TL_z": 1509.2, "desc": "Very unstable"},
+    "B": {"a_y": 0.16, "a_z": 0.12,  "TL_y": 512.8, "TL_z":  548.6, "desc": "Unstable"},
+    "C": {"a_y": 0.11, "a_z": 0.08,  "TL_y": 321.9, "TL_z":  166.1, "desc": "Slightly unstable"},
+    "D": {"a_y": 0.08, "a_z": 0.06,  "TL_y": 198.4, "TL_z":   44.0, "desc": "Neutral (default)"},
+    "E": {"a_y": 0.06, "a_z": 0.03,  "TL_y": 121.4, "TL_z":   21.3, "desc": "Slightly stable"},
+    "F": {"a_y": 0.04, "a_z": 0.016, "TL_y":  55.3, "TL_z":    5.0, "desc": "Stable"},
 }
 
 # Previous constant-K table, replaced by PG_LSM (kept for reference).  Its
@@ -751,7 +767,7 @@ def emit_puff_kernel(
     puff_vel: wp.array(dtype=wp.vec3),
     idx: int, pos: wp.vec3, emit_time: float, mass: float,
     counters: wp.array(dtype=int),
-    sig_v: wp.vec3, seed: int,
+    vel: wp.vec3,
 ):
     # A still-active puff in this ring-buffer slot means max_puffs is too
     # small and its mass is lost: count it.
@@ -761,9 +777,8 @@ def emit_puff_kernel(
     puff_active[idx] = 1
     puff_emit_time[idx] = emit_time
     puff_mass[idx] = mass
-    # Turbulent velocity drawn from the stationary distribution N(0, σ²)
-    state = wp.rand_init(seed, idx)
-    puff_vel[idx] = wp.vec3(wp.randn(state)*sig_v[0], wp.randn(state)*sig_v[1], wp.randn(state)*sig_v[2])
+    # Turbulent velocity at release (host: σ·ζ, ζ ~ N(0,1), release-correlated)
+    puff_vel[idx] = vel
 
 BUOY_NONE = wp.constant(0)
 BUOY_RISE = wp.constant(1)
@@ -1115,7 +1130,7 @@ class HybridFluidPuffSimulation:
                  wind_base_speed=4.5, wind_seed=42, max_puffs=1024,
                  seed=None,
                  use_grid_gas=False,
-                 K_rel=0.2,
+                 K_rel=0.05,
                  buoyancy_mode="none",
                  w_rise0=0.0,
                  ground_drag_rate=2.4,
@@ -1128,7 +1143,9 @@ class HybridFluidPuffSimulation:
                  legacy_emission=False,
                  turb_scale=None,
                  wind_preset="calibrated",
-                 stability_class="D"):
+                 stability_class="D",
+                 release_correlation=True,
+                 hp_gamma=HP_GAMMA):
         """
         seed              : puff RNG seed (defaults to wind_seed).
         use_grid_gas      : legacy Eulerian gas field + source momentum jet.
@@ -1152,12 +1169,20 @@ class HybridFluidPuffSimulation:
         wind_preset       : "calibrated" (default, turb_scale 0.1) or "meandering"
                             (turb_scale 1.0, pre-LSM amplitudes; harder RL).
         stability_class   : PG class A–F (LSM intensities, T_L, shear, lapse rate).
+        release_correlation: correlate successive puffs' release velocities
+                            (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
+                            coherently.  False → independent N(0, σ²) draws.
+        hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
         """
         self.seed = int(wind_seed if seed is None else seed)
         self.use_grid_gas = bool(use_grid_gas)
         self.k_rel = float(K_rel)
         if self.k_rel < 0.0:
             raise ValueError("K_rel must be >= 0")
+        self.release_correlation = bool(release_correlation)
+        self.hp_gamma = float(hp_gamma)
+        self._release_rng = np.random.default_rng([self.seed, 7])
+        self._release_zeta = None
         if buoyancy_mode not in ("none", "rise"):
             raise ValueError("buoyancy_mode must be 'none' or 'rise'")
         self.buoyancy_mode = buoyancy_mode
@@ -1209,7 +1234,8 @@ class HybridFluidPuffSimulation:
         self.source_pos=np.array([NX//4*DX, NY//4*DX, 2*DX],dtype=np.float32)
 
         self.Q = 20.0           # kg/s — methane emission rate (overridden by env)
-        self.sigma_0 = 2.0      # m — initial puff standard deviation
+        self.sigma_0 = 1.0      # m — initial puff standard deviation (was 2.0; 2 m
+                                #     exceeds Briggs D σ_z(25 m) = 1.47 m, see PG_LSM)
 
         self.wind_model=self._make_wind_model(wind_center_angle, wind_seed)
 
@@ -1290,6 +1316,8 @@ class HybridFluidPuffSimulation:
         self.sim_time = 0.0
         if seed is not None:
             self.seed = int(seed)
+        self._release_rng = np.random.default_rng([self.seed, 7])
+        self._release_zeta = None
         self._rng = np.random.default_rng(wind_seed)
         # Spatial turbulence field — warm-start from OU stationary distribution
         _turb_stat_std = self._turb_ou_sigma / math.sqrt(2.0 * self._turb_ou_theta)
@@ -1348,6 +1376,13 @@ class HybridFluidPuffSimulation:
         """Lagrangian time scales (s) per axis, T_L,fit·LSM_U_FIT/U."""
         f = LSM_U_FIT / self.U_src
         return (self.TL_y * f, self.TL_y * f, self.TL_z * f)
+
+    @property
+    def lsm_TE(self):
+        """Eulerian time scales (s) at the source, T_E = T_L/β, β = γ/i ≥ 1."""
+        TL = self.lsm_TL
+        beta = [max(self.hp_gamma / a, 1.0) for a in (self.a_y, self.a_y, self.a_z)]
+        return tuple(T / b for T, b in zip(TL, beta))
 
     def _ou_coeffs(self, dt):
         sig, TL = self.lsm_sigma, self.lsm_TL
@@ -1441,11 +1476,25 @@ class HybridFluidPuffSimulation:
                     self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
                     self.puff_vel,
                     idx, wp.vec3(*[float(v) for v in pos]), float(self.sim_time), mass,
-                    self._counters, wp.vec3(*self.lsm_sigma),
-                    int((self.seed*1000003 + 1000000007 + self.n_emitted) % 2147483647)])
+                    self._counters, self._release_velocity()])
                 self.next_puff_idx += 1
                 self.n_emitted += 1
             self._next_emit_time += self.emit_interval
+
+    def _release_velocity(self):
+        """Turbulent velocity of a new puff: σ·ζ, ζ ~ N(0, 1) per axis.
+
+        With release_correlation, ζ is an OU process in release time:
+        ζ_n = ρ ζ_{n−1} + √(1 − ρ²) ξ,  ρ = e^{−τ_e/T_E} (per axis).
+        """
+        xi = self._release_rng.standard_normal(3)
+        if not self.release_correlation or self._release_zeta is None:
+            self._release_zeta = xi
+        else:
+            rho = np.exp(-self.emit_interval / np.array(self.lsm_TE))
+            self._release_zeta = rho * self._release_zeta + np.sqrt(1.0 - rho * rho) * xi
+        v = np.array(self.lsm_sigma) * self._release_zeta
+        return wp.vec3(*[float(c) for c in v])
 
     def _fixed_inject_dir(self):
         return wp.vec3(0.0, 0.0, 2.0)

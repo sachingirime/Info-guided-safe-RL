@@ -37,7 +37,7 @@ import stable_fluid_3d as sf
 SOURCE = (60.0, 64.0, 10.0)
 Q = 5.0
 EMIT_INTERVAL = 0.2
-SIGMA_0 = 2.0
+SIGMA_0 = 1.0   # matches GaussianPuffEnv.SIGMA_0 (pre-fix run used 2.0)
 WIND_SPEED = 1.5
 WIND_ANGLE = 0.0
 WIND_RANGE = 20.0

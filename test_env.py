@@ -18,7 +18,7 @@ def _make_sim(**kw):
     """Small helper: class-D sim, wind +x, source (60, 64, 10), no obstacles."""
     sim = sf.HybridFluidPuffSimulation(wind_center_angle=0.0, wind_angle_range=20.0,
                                        wind_base_speed=1.5, wind_seed=42, **kw)
-    sim.Q = 5.0; sim.emit_interval = 0.2; sim.sigma_0 = 2.0
+    sim.Q = 5.0; sim.emit_interval = 0.2; sim.sigma_0 = 1.0
     sim.set_stability_class("D")
     sim.source_pos = np.array([60.0, 64.0, 10.0], np.float32)
     sim.set_obstacles([], [])
@@ -115,10 +115,10 @@ def test_lsm():
     N = 20_000
     sim = sf.HybridFluidPuffSimulation(wind_center_angle=0.0, wind_base_speed=3.0, steady_wind=True,
                                        shear_exponent=0.0, max_puffs=N, seed=9)
-    sim.source_pos = np.array([10.0, 64.0, 64.0], np.float32)
+    sim.source_pos = np.array([128.0, 64.0, 64.0], np.float32)
     sim.set_obstacles([], [])
     sig, TL = np.array(sim.lsm_sigma), np.array(sim.lsm_TL)
-    sim.inject_puffs(np.tile([10.0, 64.0, 64.0], (N, 1)))
+    sim.inject_puffs(np.tile([128.0, 64.0, 64.0], (N, 1)))   # mid-domain: no exits
     v0 = sim.puff_vel.numpy().astype(np.float64)
     lag = 0.5 * TL[2]                       # half the vertical T_L
     for _ in range(int(round(lag / sim.sim_dt))):
@@ -132,6 +132,27 @@ def test_lsm():
     assert np.all(abs(var_ratio - 1) < 0.04), var_ratio
     assert np.all(abs(rho - rho_ref) < 0.03), (rho, rho_ref)
     print(f"✓ LSM (var/σ² = {np.round(var_ratio, 3)}, ρ(τ) = {np.round(rho, 3)} vs {np.round(rho_ref, 3)})")
+
+
+def test_release_correlation():
+    """Release velocities: marginal N(0, σ²), lag-1 correlation e^{−τ_e/T_E}."""
+    sim = _make_sim(seed=4)
+    n = 40_000
+    v = np.array([np.array(sim._release_velocity(), float) for _ in range(n)])
+    sig, TE = np.array(sim.lsm_sigma), np.array(sim.lsm_TE)
+    rho_ref = np.exp(-sim.emit_interval / TE)
+    # ρ ≈ 1 → the sample variance converges slowly; check the increments instead:
+    # Var(v_n − ρ v_{n−1}) = σ²(1 − ρ²)
+    inc = v[1:] - rho_ref * v[:-1]
+    ratio = inc.var(0) / (sig ** 2 * (1 - rho_ref ** 2))
+    rho = np.array([np.corrcoef(v[1:, a], v[:-1, a])[0, 1] for a in range(3)])
+    assert np.all(abs(ratio - 1) < 0.03), ratio
+    assert np.all(abs(rho - rho_ref) < 0.01), (rho, rho_ref)
+    sim_ind = _make_sim(seed=4, release_correlation=False)
+    w = np.array([np.array(sim_ind._release_velocity(), float) for _ in range(n)])
+    assert np.all(abs(w.var(0) / sig ** 2 - 1) < 0.03)
+    assert np.all(np.abs([np.corrcoef(w[1:, a], w[:-1, a])[0, 1] for a in range(3)]) < 0.02)
+    print(f"✓ release correlation (ρ = {np.round(rho, 4)} vs {np.round(rho_ref, 4)})")
 
 
 def test_los():
@@ -174,7 +195,7 @@ def test_kernel_mass():
     print(f"✓ kernel mass (free {m_free:.4f}, ground {m_ground:.4f})")
 
 
-TESTS = [test_obs_dimensions, test_emission_count, test_rng, test_lsm, test_los,
+TESTS = [test_obs_dimensions, test_emission_count, test_rng, test_lsm, test_release_correlation, test_los,
          test_kernel_mass, test_no_grid_gas, test_determinism]
 
 if __name__ == "__main__":

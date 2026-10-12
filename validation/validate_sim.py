@@ -71,7 +71,7 @@ def make_sim(source, U, Q=1.0, emit=0.2, seed=1, angle=0.0, pg="D", max_puffs=10
     sim = sf.HybridFluidPuffSimulation(wind_center_angle=angle, wind_angle_range=20.0,
                                        wind_base_speed=U, wind_seed=seed, seed=seed,
                                        max_puffs=max_puffs, **kw)
-    sim.Q = Q; sim.emit_interval = emit; sim.sigma_0 = 2.0
+    sim.Q = Q; sim.emit_interval = emit; sim.sigma_0 = 1.0
     sim.set_stability_class(pg)
     sim.source_pos = np.array(source, np.float32)
     sim.set_obstacles([], [])
@@ -182,11 +182,13 @@ V1_U = 2.0
 V1_X = (25.0, 50.0, 100.0)
 V1_YS = np.arange(0.0, 128.0 + 0.5, 1.0)
 V1_ZS = np.arange(0.0, 100.0 + 0.5, 1.0)
-V1_KREL = (0.0, 0.2, 1.0)
+V1_KREL = (0.0, 0.05, 1.0)
+V1_CORR_SEEDS = (1, 2, 3, 4)
 
 
-def v1_field(k_rel, spin=150.0, avg=180.0, seed=1):
+def v1_field(k_rel, spin=150.0, avg=180.0, seed=1, release_correlation=False):
     sim = make_sim(V1_SRC, V1_U, Q=1.0, emit=0.2, seed=seed, K_rel=k_rel, steady_wind=True,
+                   release_correlation=release_correlation,
                    shear_exponent=0.0, ground_drag_rate=0.0, buoyancy_mode="none")
     pts = [plane(V1_SRC[0] + d, V1_YS, V1_ZS) for d in V1_X]
     P = np.concatenate([p for p, _ in pts])
@@ -201,7 +203,7 @@ def v1_field(k_rel, spin=150.0, avg=180.0, seed=1):
     return fields, sim
 
 
-def v1(avg=180.0):
+def v1(avg=180.0, avg_corr=7200.0):
     out = {"setup": {"source": V1_SRC, "U": V1_U, "Q": 1.0, "emit_interval": 0.2, "class": "D",
                      "spin_s": 150.0, "avg_s": avg, "sample_dt": 0.5,
                      "y_range": [0, 128], "z_range": [0, 100], "grid_m": 1.0},
@@ -210,17 +212,30 @@ def v1(avg=180.0):
                         "e^{−t/T_L}), t = x/U, σ_v and T_L from the sim's class-D LSM at U = 2 m/s",
            "note": ("Plan specified y ± 30 m, z ≤ 60 m and a 180 s average. y/z ranges were widened so the "
                     "flux integral captures the plume. A 1800 s average is used (180 s left sampling noise "
-                    "of ~13% at one centreline point in the pre-LSM f_rel=0 run). K_rel ∈ {0, 0.2, 1} "
-                    "shows puff growth and LSM spread add without double counting. σ: second moments of "
-                    "the sim and the analytic field on the same grid."),
+                    "of ~13% at one centreline point in the pre-LSM f_rel=0 run). K_rel ∈ {0, 0.05, 1} "
+                    "shows puff growth and LSM spread add without double counting; these runs use "
+                    "independent release velocities (single-particle transport). One extra run with the "
+                    "default release correlation (K_rel=0.05) checks the mean plume is unchanged; it is "
+                    "averaged longer because the plume meanders on the T_L time scale. σ: second moments "
+                    "of the sim and the analytic field on the same grid."),
            "runs": {}}
     dy = dz = 1.0
     ys, zs = V1_YS, V1_ZS
     jy = int(np.argmin(abs(ys - V1_SRC[1]))); kz = int(np.argmin(abs(zs - V1_SRC[2])))
     all_ok = True
     profiles = {}
-    for f_rel in V1_KREL:
-        fields, sim = v1_field(f_rel, avg=avg)
+    configs = [(k, False, avg, (1,)) for k in V1_KREL] + [(0.05, True, avg_corr, V1_CORR_SEEDS)]
+    for f_rel, corr, avg_i, seeds in configs:
+        # Correlated releases make the plume meander coherently (T_E ≈ 40 s at
+        # U = 2 m/s): one 7200 s run has ±6% sampling noise in σ_y (5 seeds:
+        # +6.0, +9.1, +0.3, +3.8, −6.9% at 100 m), so this check uses the
+        # ensemble mean over several seeds.
+        fields = None
+        for sd in seeds:
+            f_i, sim = v1_field(f_rel, avg=avg_i, release_correlation=corr, seed=sd)
+            fields = f_i if fields is None else fields + f_i
+        fields = fields / len(seeds)
+        tag = f"K_rel={f_rel:g}" + (f", release-correlated, {len(seeds)} seeds" if corr else "")
         rows = []
         ok_f = sim.n_overwritten == 0
         for d, C in zip(V1_X, fields):
@@ -240,11 +255,12 @@ def v1(avg=180.0):
                              and abs(r["err_centerline"]) < 0.10 and abs(r["err_flux"]) < 0.05)
             ok_f &= r["pass"]
             rows.append(r)
-            profiles[(f_rel, d)] = (C[:, kz], C[jy, :], A[:, kz], A[jy, :])
-            print(f"  V1 K_rel={f_rel:.1f} x-xs={d:5.0f}: σy {sy_s:6.2f}/{sy_a:6.2f} ({100*r['err_sigma_y']:+.1f}%)  "
+            if not corr:
+                profiles[(f_rel, d)] = (C[:, kz], C[jy, :], A[:, kz], A[jy, :])
+            print(f"  V1 {tag:38s} x-xs={d:5.0f}: σy {sy_s:6.2f}/{sy_a:6.2f} ({100*r['err_sigma_y']:+.1f}%)  "
                   f"σz {sz_s:6.2f}/{sz_a:6.2f} ({100*r['err_sigma_z']:+.1f}%)  "
                   f"C_cl {100*r['err_centerline']:+.1f}%  flux {100*r['err_flux']:+.1f}%  {verdict(r['pass'])}")
-        out["runs"][f"K_rel={f_rel:g}"] = {"rows": rows, "n_overwritten": sim.n_overwritten,
+        out["runs"][tag] = {"avg_s": avg_i, "seeds": list(seeds), "release_correlation": corr, "rows": rows, "n_overwritten": sim.n_overwritten,
                                    "n_emitted": sim.n_emitted, "n_exited": sim.n_exited,
                                    "U_src": sim.U_src, "lsm_sigma": list(sim.lsm_sigma),
                                    "lsm_TL": list(sim.lsm_TL), "pass": bool(ok_f)}
@@ -403,7 +419,23 @@ def v4_stats(series, rows, avg):
     save_fig(fig, "v4_pdfs")
     return {"sample_hz": 10, "duration_s": avg, "stats": stats, "off_axis_dy": V4_OFF_DY[j_off],
             "sigma_y_50m_sim": sy50, "sanity_offaxis_more_intermittent": bool(sanity),
-            "note": "intermittency factor γ = fraction of time C > 0.1·mean (lower = more intermittent)"}
+            "note": "intermittency factor γ = fraction of time C > 0.1·mean (lower = more intermittent). "
+                    "Before release correlation (independent puff velocities) γ was 1.00 at all points: "
+                    "the plume did not meander coherently."}
+
+
+V3_HISTORY = [
+    "Pre-LSM (constant-K centroid random walk): σ 2.4–7.5× Briggs D; no turb_scale/K/f_rel setting "
+    "fitted 50 and 200 m together (pre_lsm_tuning_sweep).",
+    "LSM, σ0=2 m, K_rel=0.2: D failed at 25 m (σy ×1.78, σz ×2.15) and σz at 50 m (×1.54); σ0 exceeds "
+    "Briggs D σz(25 m)=1.47 m, so no T_L fits. Experiment σ0=1 m, K_rel=0.05 with refit T_L: D and A "
+    "pass 25–200 m (validation/v3_alt_sigma0_1_Krel_0.05.json, independent release velocities) → adopted.",
+    "Release correlation with T_L (hundreds of s): plume swings too slowly; 3600 s averages not converged "
+    "(A failed, V1 correlated σy +10%). Replaced by the Eulerian scale T_E = T_L·i/γ (Hay–Pasquill, γ=0.6).",
+    "Current: release correlation with T_E. A single 600 s average is one meander realisation "
+    "(D σy at 100 m ×0.88 and ×0.70 for two seeds); V3 uses 3600 s to approximate the ensemble plume "
+    "the T_L table is fitted to. Briggs formulas are stated for 100 m–10 km; 25–100 m is extrapolation.",
+]
 
 
 def v3_v4(avg=600.0, spot=("A", "F")):
@@ -419,6 +451,7 @@ def v3_v4(avg=600.0, spot=("A", "F")):
     for pg in spot:
         spots[pg], _, _ = v3_run(pg, avg=avg)
     d["spot_checks"] = spots
+    d["history"] = V3_HISTORY
     tl_path = os.path.join(HERE, "tl_fit.json")
     if os.path.exists(tl_path):
         with open(tl_path) as f:
@@ -568,7 +601,8 @@ def main():
     ap.add_argument("--only", default="V0,V1,V2,V3,V5,V6,V7,V8",
                     help="comma list; V3 also produces V4")
     ap.add_argument("--v1-avg", type=float, default=1800.0)
-    ap.add_argument("--v3-avg", type=float, default=600.0)
+    ap.add_argument("--v1-avg-corr", type=float, default=7200.0)
+    ap.add_argument("--v3-avg", type=float, default=3600.0)
     args = ap.parse_args()
     wp.init()
 
@@ -579,7 +613,7 @@ def main():
     todo = [t.strip().upper() for t in args.only.split(",")]
     t_start = time.time()
     if "V0" in todo: results["V0"] = v0()
-    if "V1" in todo: results["V1"] = v1(avg=args.v1_avg)
+    if "V1" in todo: results["V1"] = v1(avg=args.v1_avg, avg_corr=args.v1_avg_corr)
     if "V2" in todo: results["V2"] = v2()
     if "V3" in todo or "V4" in todo:
         results["V3"], results["V4"] = v3_v4(avg=args.v3_avg)

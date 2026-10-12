@@ -1,0 +1,93 @@
+{
+ "note": "True concentration sampled at 20k random drone-zone points (z 4-60 m) and 20k points within 60 m of the source (z 4-20 m), 8 episodes x 2 snapshots (60 s and 120 s). c_norm saturation = c_norm >= 0.99 (noise-free).",
+ "pre_fix_ceiling_5e-3": [
+  {
+   "set": "drone zone (all)",
+   "frac_above_floor": 0.075428125,
+   "pct_of_C_above_floor": {
+    "10": 0.00035948018194176257,
+    "50": 0.0008533783257007599,
+    "90": 0.004832522012293339,
+    "99": 0.015115928836166859,
+    "99.9": 0.021310005336999893
+   },
+   "max": 0.024339264258742332,
+   "frac_cnorm_saturated(>=0.99)": 0.00725,
+   "frac_cnorm_saturated_given_detect": 0.10184372256365233
+  },
+  {
+   "set": "within 60 m of source",
+   "frac_above_floor": 0.25605625,
+   "pct_of_C_above_floor": {
+    "10": 0.0003469226066954434,
+    "50": 0.0006356146186590195,
+    "90": 0.0016385904746130109,
+    "99": 0.012334293685853481,
+    "99.9": 0.020461153239011765
+   },
+   "max": 0.02781827002763748,
+   "frac_cnorm_saturated(>=0.99)": 0.0091875,
+   "frac_cnorm_saturated_given_detect": 0.03648548026805659
+  }
+ ],
+ "new_plume_ceiling_5e-3": [
+  {
+   "set": "drone zone (all)",
+   "frac_above_floor": 0.005225,
+   "pct_of_C_above_floor": {
+    "10": 0.0005334930610843003,
+    "50": 0.0042935507372021675,
+    "90": 0.05505108833312988,
+    "99": 0.22368377447128296,
+    "99.9": 0.5021572709083557
+   },
+   "max": 0.6029850244522095,
+   "frac_cnorm_saturated(>=0.99)": 0.0018125,
+   "frac_cnorm_saturated_given_detect": 0.4084507042253521
+  },
+  {
+   "set": "within 60 m of source",
+   "frac_above_floor": 0.038478125,
+   "pct_of_C_above_floor": {
+    "10": 0.0006010147626511753,
+    "50": 0.007042308803647757,
+    "90": 0.07011110335588455,
+    "99": 0.24900764226913452,
+    "99.9": 0.4542810618877411
+   },
+   "max": 0.7656236290931702,
+   "frac_cnorm_saturated(>=0.99)": 0.0216875,
+   "frac_cnorm_saturated_given_detect": 0.5534290271132376
+  }
+ ],
+ "new_plume_ceiling_1e-1": [
+  {
+   "set": "drone zone (all)",
+   "frac_above_floor": 0.005225,
+   "pct_of_C_above_floor": {
+    "10": 0.0005334930610843003,
+    "50": 0.0042935507372021675,
+    "90": 0.05505108833312988,
+    "99": 0.22368377447128296,
+    "99.9": 0.5021572709083557
+   },
+   "max": 0.6029850244522095,
+   "frac_cnorm_saturated(>=0.99)": 0.0004375,
+   "frac_cnorm_saturated_given_detect": 0.09859154929577464
+  },
+  {
+   "set": "within 60 m of source",
+   "frac_above_floor": 0.038478125,
+   "pct_of_C_above_floor": {
+    "10": 0.0006010147626511753,
+    "50": 0.007042308803647757,
+    "90": 0.07011110335588455,
+    "99": 0.24900764226913452,
+    "99.9": 0.4542810618877411
+   },
+   "max": 0.7656236290931702,
+   "frac_cnorm_saturated(>=0.99)": 0.0021875,
+   "frac_cnorm_saturated_given_detect": 0.05582137161084529
+  }
+ ]
+}

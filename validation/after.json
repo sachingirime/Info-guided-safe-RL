@@ -1,17 +1,17 @@
 {
   "sim_time": 119.99999999999575,
   "grid_share": 0.0,
-  "n_cells_above_thresh": 2324,
+  "n_cells_above_thresh": 1213,
   "w_max_source": 0.02854219451546669,
   "w_max_source_tmax": 0.12337245047092438,
-  "median_puff_height": 9.416568756103516,
+  "median_puff_height": 8.70229721069336,
   "source_z": 10.0,
-  "n_active_puffs": 597,
+  "n_active_puffs": 592,
   "rho_max": 0.0,
   "divergence_residual": 0.0015740917685131233,
   "sor_iters": 25,
   "n_emitted": 600,
   "n_overwritten": 0,
-  "n_exited": 3,
+  "n_exited": 8,
   "code": "sim-fix"
 }
