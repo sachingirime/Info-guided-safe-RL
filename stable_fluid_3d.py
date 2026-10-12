@@ -936,6 +936,11 @@ class WindVectorModel:
         self._gust_active = False
         self._gust_elapsed = 0.0
         self._gust_vec = np.zeros(3)  
+        # Gust onsets are a Poisson process: the quiet time before the next
+        # gust is drawn once, Exp(mean = gust_interval).  (Pre-fix drew a new
+        # Exp sample every frame and compared it to the timer, so gusts fired
+        # ~1 s apart instead of ~gust_interval.)
+        self._gust_wait = self.rng.exponential(gust_interval) if self.enable_gusts else math.inf
 
     def step(self, dt):
         # OU update for each wind component
@@ -972,7 +977,7 @@ class WindVectorModel:
             return
         self._gust_timer += dt
         if not self._gust_active:
-            if self._gust_timer > self.rng.exponential(self.gust_interval):
+            if self._gust_timer > self._gust_wait:
                 self._gust_active = True
                 self._gust_elapsed = 0.0
                 self._gust_timer = 0.0
@@ -994,6 +999,7 @@ class WindVectorModel:
             if self._gust_elapsed > self.gust_duration:
                 self._gust_active = False
                 self._gust_timer = 0.0
+                self._gust_wait = self.rng.exponential(self.gust_interval)
 
     def get_wind(self, t):
         turb = np.sum(self._turb_states, axis=0)
