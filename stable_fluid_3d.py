@@ -634,7 +634,7 @@ def advect_puffs_rk2(
     langevin_x:float, langevin_y:float, langevin_z:float,
     n_spheres:int, sphere_centers:wp.array(dtype=wp.vec3), sphere_radii:wp.array(dtype=float),
     n_cuboids:int, cuboid_centers:wp.array(dtype=wp.vec3), cuboid_extents:wp.array(dtype=wp.vec3),
-    lapse_rate:float, t_surface:float,
+    lapse_rate:float, t_surface:float, seed:int,
 ):
     i=wp.tid()
     if puff_active[i]==0: return
@@ -659,17 +659,13 @@ def advect_puffs_rk2(
     vel2=wp.vec3(vel2[0],vel2[1],vel2[2]+buoy)
     new_pos=pos+vel2*dt
 
-    # Langevin noise
-    t_int=int(current_time*100.0); seed=i*2654435761+t_int*1234567891
-    h0=float((seed^(seed>>16))&0x7FFFFFFF)/2147483647.0+1e-9
-    h1=float(((seed*1664525)^(seed>>13))&0x7FFFFFFF)/2147483647.0+1e-9
-    h2=float(((seed*22695477)^(seed>>11))&0x7FFFFFFF)/2147483647.0+1e-9
-    h3=float(((seed*6364136)^(seed>>17))&0x7FFFFFFF)/2147483647.0+1e-9
-    h4=float(((seed*214013)^(seed>>14))&0x7FFFFFFF)/2147483647.0+1e-9
-    h5=float(((seed*1140671)^(seed>>9))&0x7FFFFFFF)/2147483647.0+1e-9
-    nx_r=wp.sqrt(-2.0*wp.log(h0))*wp.cos(6.28318530*h1)
-    ny_r=wp.sqrt(-2.0*wp.log(h2))*wp.cos(6.28318530*h3)
-    nz_r=wp.sqrt(-2.0*wp.log(h4))*wp.cos(6.28318530*h5)
+    # Centroid noise: independent N(0,1) per axis from Warp's seeded PRNG.
+    # Stream = (per-step seed, puff index) → reproducible for a fixed sim seed.
+    # (Pre-fix: an integer hash of (i, int(100·t)) with visible x/y correlation.)
+    state=wp.rand_init(seed,i)
+    nx_r=wp.randn(state)
+    ny_r=wp.randn(state)
+    nz_r=wp.randn(state)
     sqrt_dt=wp.sqrt(dt)
     new_pos=new_pos+wp.vec3(nx_r*langevin_x*sqrt_dt,
                             ny_r*langevin_y*sqrt_dt,
@@ -1001,6 +997,7 @@ class HybridFluidPuffSimulation:
         self._next_emit_time=0.0   # emission schedule: t_n = n·emit_interval
         self.n_emitted=0
         self._counters=wp.zeros(2,dtype=int)   # [overwritten, exited]
+        self._step_counter=0   # puff-noise stream index (reset with the sim)
 
         self.source_pos=np.array([NX//4*DX, NY//4*DX, 2*DX],dtype=np.float32)
 
@@ -1055,6 +1052,7 @@ class HybridFluidPuffSimulation:
         self.next_puff_idx = 0
         self._next_emit_time = 0.0
         self.n_emitted = 0
+        self._step_counter = 0
         self.sim_time = 0.0
         if seed is not None:
             self.seed = int(seed)
@@ -1252,7 +1250,9 @@ class HybridFluidPuffSimulation:
             self.n_spheres,self.sphere_centers,self.sphere_radii,
             self.n_cuboids,self.cuboid_centers,self.cuboid_extents,
             float(self.LAPSE_RATE),float(self.T_SURFACE),
+            int((self.seed*1000003+self._step_counter)%2147483647),
         ])
+        self._step_counter+=1
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
             self.puff_pos,self.puff_active,
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
