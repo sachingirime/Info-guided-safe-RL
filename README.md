@@ -35,7 +35,7 @@ Continuous velocity command in R^3, clipped to [-V_MAX, V_MAX] with **V_MAX = 10
 ## Installation
 
 ```bash
-pip install numpy gymnasium matplotlib warp-lang scipy
+pip install -r requirements.txt     # pyvista only for realtime_viz.py
 ```
 
 Requires a CUDA-capable GPU for the Warp fluid solver.
@@ -66,7 +66,10 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 | Argument | Default | Meaning |
 |---|---|---|
 | `seed` | `wind_seed` | Puff-noise RNG seed (the env derives one per episode from its RNG) |
-| `K_rel` | `0.2` | m²/s, relative puff growth σ² = σ₀² + 2·K_rel·age |
+| `K_rel` | `0.05` | m²/s, relative puff growth σ² = σ₀² + 2·K_rel·age (σ₀ = `SIGMA_0` = 1 m) |
+| `release_correlation` | `True` | Successive puffs' turbulent velocities correlated over the Eulerian time scale T_E, so the plume meanders coherently |
+| `hp_gamma` | `0.6` | γ in the Hay–Pasquill ratio T_L/T_E = γ/i |
+| `stability_class` | `"D"` | PG class A–F (set via the env's `stability_class`) |
 | `wind_preset` | `"calibrated"` | `"calibrated"` (small resolved fluctuations, ≲3° meander) or `"meandering"` (pre-LSM amplitudes, harder RL) |
 | `turb_scale` | from preset | Multiplies all stochastic resolved-wind amplitudes |
 | `buoyancy_mode` | `"none"` | `"none"` (neutral gas) or `"rise"` |
@@ -81,15 +84,20 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 | `use_grid_gas` | `False` | Legacy Eulerian gas field + source jet (pre-fix figures only) |
 | `legacy_emission` | `False` | Legacy two puffs per interval (pre-fix figures only) |
 
-`GaussianPuffEnv(warmup_s=...)` overrides the 60 s warm-up.
+Env-only arguments: `warmup_s` (default 60 s), `wind_noise` (default `True`: OU anemometer turbulence with the class σ and `wind_noise_tau` = 1 s).
 
 ## Testing and validation
 
 ```bash
 python test_env.py                        # unit tests (~10 s)
 python validation/diag_state.py           # before/after state diagnostic
-python validation/validate_sim.py         # V0-V8, writes validation/results.json + validation/figs/
+python validation/validate_sim.py         # V0-V8 (~25 min on a 4090), writes validation/results.json + validation/figs/
+python validation/fit_tl.py               # refit the T_L table (validation/tl_fit.json)
+python realtime_viz.py --headless         # paper figures in figures/ (gitignored)
+python validation/make_before_figure.py --prefix <checkout of tag pre-fix>
 ```
+
+Validation summary (class D, RTX 4090): V1 analytic plume within 5%; V3 mean-plume σ within ×[0.76, 1.49] of Briggs D over 25-200 m; V4 centreline intermittency γ 0.71-0.83; 30-47× real time. See `validation/results.json` and `CHANGELOG.md`.
 
 ## Environment Details
 
@@ -100,13 +108,14 @@ Inviscid Stable Fluids on a 64x32x32 grid (4 m cells): semi-Lagrangian advection
 Lagrangian Gaussian puffs, one per `PUFF_PERIOD` with mass Q·`PUFF_PERIOD`:
 - RK2 advection on the trilinearly interpolated wind
 - Absolute dispersion: each puff carries a turbulent velocity v following an OU process (Thomson 1987) with σ_u = σ_v = a_y·U, σ_w = a_z·U from the Briggs near-field slopes and T_L fitted to Briggs σ(x) (`validation/fit_tl.py`); reflections flip v's normal component
+- Coherent meander: release velocities of successive puffs are correlated over T_E = T_L·i/γ (Hay–Pasquill), so the instantaneous plume meanders and is intermittent
 - Relative dispersion: puff growth σ² = σ₀² + 2·K_rel·age
 - Ground reflection by the method of images; removal at the open domain faces
 - Obstacles: puffs pushed 2 m out of solids; line-of-sight occlusion from puff centre to the sample point
 - Buoyancy off by default; optional decaying rise velocity for methane
 
 ### Sensor Model
-TDLAS-style methane sensor: bias 1e-4 kg/m³, Gaussian noise σ = 1e-4 kg/m³, first-order lag τ = 1 s, detection threshold 3e-4 kg/m³ (3σ).
+TDLAS-style methane sensor: bias 1e-4 kg/m³, Gaussian noise σ = 1e-4 kg/m³, first-order lag τ = 1 s, detection threshold 3e-4 kg/m³ (3σ), normalisation ceiling 0.1 kg/m³. Anemometer: resolved wind + OU turbulence (class σ, τ = 1 s).
 
 ## Physics changes since `pre-fix`
 
@@ -116,12 +125,14 @@ Tag `pre-fix` = commit `1d30cdb`. Branch `sim-fix` changes:
 2. **Grid convention.** All samplers use cell centres (`p/dx − 0.5`), matching the obstacle mask and shear profile (pre-fix puffs and the env saw the wind shifted 2 m on every axis), and clamp to the grid edge correctly.
 3. **Emission.** One puff per interval (was two → 2Q), no release jitter (was 1.5 m), fixed emission schedule (float drift emitted every 7 frames at 0.2 s → Q 14% low), per-puff mass, overwrite/exit counters.
 4. **Seeded RNG.** Warp `rand_init`/`randn` per puff and step replaces a hash with correlated axes.
-5. **Dispersion.** Pre-fix used the full K for both puff growth and a centroid random walk (σ₀² + 4K·t), and the class-D K row did not follow its own formula. Now: per-puff OU turbulent velocity calibrated to Briggs (A–F), relative growth K_rel = 0.2 m²/s; resolved-wind turbulence ×0.1 (`wind_preset="calibrated"`); shear referenced to 10 m instead of the 128 m domain top.
+5. **Dispersion.** Pre-fix used the full K for both puff growth and a centroid random walk (σ₀² + 4K·t), and the class-D K row did not follow its own formula. Now: per-puff OU turbulent velocity calibrated to Briggs (A–F) with release-correlated meander, relative growth K_rel = 0.05 m²/s, σ₀ = 1 m; resolved-wind turbulence ×0.1 (`wind_preset="calibrated"`); shear referenced to 10 m instead of the 128 m domain top.
 6. **Buoyancy.** Off by default; `"rise"` is a decaying velocity. Pre-fix added the 4.55 m/s² methane acceleration as a velocity (median puff height 37 m for a 10 m source).
 7. **Ground drag** scaled by dt (was per frame).
 8. **Line-of-sight occlusion**: gas no longer leaks through obstacles.
 9. **Gusts** are a Poisson process with the stated mean interval (pre-fix fired every ~3 s, active 69% of the time).
-10. **Env**: per-episode puff seed, obstacles placed before a 60 s warm-up (was 0.33 s, after the plume started), `N_PUFFS` 1024 → 2048 (1024 overwrote up to 16% of emitted puffs per episode), corrected docstrings.
+10. **Env**: per-episode puff seed, obstacles placed before a 60 s warm-up (was 0.33 s, after the plume started), `N_PUFFS` 1024 → 2048 (1024 overwrote up to 16% of emitted puffs per episode), `CONC_SIG_CEIL` 5e-3 → 0.1 kg/m³, anemometer turbulence, corrected docstrings.
+
+Full list with old/new values: [CHANGELOG.md](CHANGELOG.md).
 
 ## Citation
 
