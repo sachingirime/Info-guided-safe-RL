@@ -10,8 +10,9 @@ Physics:
   - Obstacle-aware velocity/pressure/density (SDF-based Neumann BCs)
   - Lagrangian Gaussian puffs with RK2 advection + Langevin noise
   - Ground reflection via method of images at z=0
-  - Pasquill-Gifford stability classes A–F for K_D + Langevin coefficients
-  - Temperature-profile-based methane buoyancy (Stull 1988)
+  - Pasquill-Gifford stability classes A–G for K_D; dispersion split between
+    puff growth (f_rel·K) and seeded centroid noise (ℓ = √(2(1−f_rel)K))
+  - Optional buoyant rise velocity w_rise0·(σ₀/σ)³ (off by default)
 """
 
 import warp as wp
@@ -94,6 +95,8 @@ PG_LAPSE_RATES = {
 # reproducing the Briggs plume-rise result without an explicit Δh formula.
 # Reference: Briggs (1975), "Plume Rise Predictions";
 #            Seinfeld & Pandis (2016) §18.4.
+# Used only by the legacy grid-gas path (integrate_rho, use_grid_gas=True).
+# Puffs use buoyancy_mode="rise" with an initial rise *velocity* w_rise0.
 METHANE_BUOYANCY_ACCEL = 9.81 * (1.225 - 0.657) / 1.225  # ≈ 4.55 m/s²
 T_SURFACE_DEFAULT = 293.15  # K (20°C reference surface temperature)
 
@@ -633,30 +636,41 @@ def emit_puff_kernel(
     puff_emit_time[idx] = emit_time
     puff_mass[idx] = mass
 
+BUOY_NONE = wp.constant(0)
+BUOY_RISE = wp.constant(1)
+
 @wp.kernel
 def advect_puffs_rk2(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     puff_emit_time: wp.array(dtype=float), wind_field: wp.array3d(dtype=wp.vec3),
-    dt:float, dx:float, buoy_accel:float, current_time:float,
+    dt:float, dx:float, current_time:float,
     langevin_x:float, langevin_y:float, langevin_z:float,
     n_spheres:int, sphere_centers:wp.array(dtype=wp.vec3), sphere_radii:wp.array(dtype=float),
     n_cuboids:int, cuboid_centers:wp.array(dtype=wp.vec3), cuboid_extents:wp.array(dtype=wp.vec3),
     lapse_rate:float, t_surface:float, seed:int,
+    buoy_mode:int, w_rise0:float, sigma_0:float,
+    K_rel_x:float, K_rel_y:float, K_rel_z:float,
 ):
     i=wp.tid()
     if puff_active[i]==0: return
     pos=puff_pos[i]; g=world_to_grid(pos,dx); gx=g[0]; gy=g[1]; gz=g[2]
     age=current_time-puff_emit_time[i]
     if age<0.0: age=0.0
-    # Briggs (1975) dilution-limited buoyancy: a_eff = a_b · (σ₀/σ)³
-    # σ² = σ₀² + 2·K_D_Z·age  →  dilution ratio = (σ₀²/σ²)^(3/2)
-    # This replaces the ad-hoc exp(-0.2·age) with a physically motivated
-    # decay that produces a finite plume rise consistent with Briggs.
-    t_env = t_surface - lapse_rate * pos[2]
-    sig2_0 = 2.0 * 2.0  # σ₀² (using σ₀ = 2 m, matched to HybridFluidPuffSimulation.sigma_0)
-    sig2 = sig2_0 + 2.0 * langevin_z * langevin_z * 0.5 * wp.max(age, 0.01)  # σ² = σ₀² + 2·K_D_Z·t, K_D_Z = L_Z²/2
-    dilution = wp.pow(sig2_0 / sig2, 1.5)  # (σ₀/σ)³
-    buoy = buoy_accel * dilution * (293.15 / wp.max(t_env, 200.0))
+
+    # Buoyant rise as a velocity (m/s), added to the sampled wind:
+    #   w_b = w_rise0 · (σ₀/σ)³ · (T_ref/T_env),  (σ₀/σ)³ = σ₀³/(σx·σy·σz)
+    # with σ from the puff growth law σ_α² = σ₀² + 2·K_rel_α·age.  The rise
+    # decays with volumetric dilution, so the height gain is finite
+    # (Briggs-like plateau, Δh ≈ ∫w_b dt).  w_rise0 is an empirical initial
+    # rise speed for buoyant gases (methane); "none" for neutral/dilute gases.
+    # (Pre-fix: the 4.55 m/s² methane *acceleration* was added as a velocity.)
+    buoy=float(0.0)
+    if buoy_mode==BUOY_RISE:
+        s02=sigma_0*sigma_0
+        vol=wp.sqrt((s02+2.0*K_rel_x*age)*(s02+2.0*K_rel_y*age)*(s02+2.0*K_rel_z*age))
+        dilution=s02*sigma_0/vol   # (σ₀/σ)³
+        t_env=t_surface-lapse_rate*pos[2]
+        buoy=w_rise0*dilution*(293.15/wp.max(t_env,200.0))
 
     # RK2 advection
     vel1=sample_vel_3d(wind_field,gx,gy,gz)
@@ -977,6 +991,10 @@ class HybridFluidPuffSimulation:
             raise ValueError("buoyancy_mode must be 'none' or 'rise'")
         self.buoyancy_mode = buoyancy_mode
         self.w_rise0 = float(w_rise0)
+        if buoyancy_mode == "rise" and self.f_rel == 0.0:
+            import warnings
+            warnings.warn("buoyancy_mode='rise' with f_rel=0: puffs never dilute, so the "
+                          "rise never decays (no plateau).")
         self.ground_drag_rate = float(ground_drag_rate)
         self.release_jitter = float(release_jitter)
         self.enable_turbulence = bool(enable_turbulence) and not steady_wind
@@ -1271,12 +1289,14 @@ class HybridFluidPuffSimulation:
         if n==0: return
         wp.launch(advect_puffs_rk2,dim=n,inputs=[
             self.puff_pos,self.puff_active,self.puff_emit_time,
-            self.u0,self.sim_dt,self.dx,float(METHANE_BUOYANCY_ACCEL),self.sim_time,
+            self.u0,self.sim_dt,self.dx,self.sim_time,
             *[float(v) for v in self.L],
             self.n_spheres,self.sphere_centers,self.sphere_radii,
             self.n_cuboids,self.cuboid_centers,self.cuboid_extents,
             float(self.LAPSE_RATE),float(self.T_SURFACE),
             int((self.seed*1000003+self._step_counter)%2147483647),
+            1 if self.buoyancy_mode=="rise" else 0, float(self.w_rise0), float(self.sigma_0),
+            *[float(v) for v in self.K_rel],
         ])
         self._step_counter+=1
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
