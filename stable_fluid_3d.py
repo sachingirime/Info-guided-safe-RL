@@ -1141,8 +1141,28 @@ class HybridFluidPuffSimulation:
             (*self._turb_shape, 3))).astype(np.float32)
         self.turb_field = wp.array(self._turb_np, dtype=wp.vec3)
 
-        # SOR pressure solver residual buffer
-        self._sor_residual = wp.zeros(1, dtype=float)
+        # Pressure solve: Red-Black SOR iterations (see divergence_residual)
+        self.sor_iters = 25
+        self._div_scratch = wp.zeros(self.wind_shape, dtype=float)
+
+    def divergence_residual(self, u_ref=None):
+        """Normalised divergence of the current (projected) wind field.
+
+        Returns mean |∇·u| over fluid cells divided by U_ref/dx, i.e.
+        mean |div_cell| / U_ref with div_cell the kernel's central-difference
+        divergence in m/s.  Also stores the same norm of the pre-projection
+        divergence of the last step in self.last_div_pre.  Diagnostics only
+        (forces a device sync).
+        """
+        if u_ref is None:
+            u_ref = max(float(self.wind_base_speed), 1e-6)
+        wp.launch(wind_divergence_3d, dim=self.wind_shape,
+                  inputs=[self.u0, self._div_scratch, self.obstacle_mask])
+        fluid = self.obstacle_mask.numpy() == 0
+        fluid[:, :, 0] = False   # ground row: divergence defined as 0
+        post = float(np.abs(self._div_scratch.numpy()[fluid]).mean()) / u_ref
+        self.last_div_pre = float(np.abs(self.div.numpy()[fluid]).mean()) / u_ref
+        return post
 
     def _make_wind_model(self, center_angle, seed):
         wm = WindVectorModel(
@@ -1220,8 +1240,7 @@ class HybridFluidPuffSimulation:
     def _run_pressure_sor(self):
         """Red-Black SOR pressure solve with fixed iterations (no CPU-GPU syncs)."""
         omega = 1.7
-        # 25 iterations is a sweet spot for speed vs. stability in RL.
-        fixed_iters = 25 
+        fixed_iters = self.sor_iters   # see divergence_residual() / V8
         shape = self.wind_shape
 
         for _ in range(fixed_iters):
