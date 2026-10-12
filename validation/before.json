@@ -1,0 +1,14 @@
+{
+  "sim_time": 119.99999999999575,
+  "grid_share": 0.2534923255443573,
+  "n_cells_above_thresh": 13891,
+  "w_max_source": 6.498135089874268,
+  "w_max_source_tmax": 6.82916784286499,
+  "median_puff_height": 36.909915924072266,
+  "source_z": 10.0,
+  "n_active_puffs": 967,
+  "rho_max": 1.8555285930633545,
+  "code": "tag pre-fix (1d30cdb)",
+  "note": "grid_share uses the SIM_FIX_PLAN definition (sum over cells, z in [4,60], C>3e-4) = 0.25. The median per-cell grid share with no threshold is 0.60 (closer to the audit's ~0.68); the value is definition-dependent but the grid term is clearly non-zero.",
+  "grid_share_median_cell_nothresh": 0.604
+}
