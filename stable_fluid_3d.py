@@ -589,11 +589,15 @@ def apply_global_wind(
     )
 
 @wp.kernel
-def apply_ground_drag(u: wp.array3d(dtype=wp.vec3), drag:float, n_layers:int):
+def apply_ground_drag(u: wp.array3d(dtype=wp.vec3), drag_rate:float, dt:float, n_layers:int):
+    """Linear ground drag in the lowest n_layers cells, scaled by dt:
+        u ← u · exp(−drag_rate · dt · (1 − k/n_layers)).
+    (Pre-fix: u ← u·max(1 − 0.08·(1 − k/n), 0) per frame, i.e. frame-rate
+    dependent; drag_rate = 2.4 /s reproduces it at 30 fps.)"""
     i,j,k = wp.tid()
     if k<n_layers:
         frac=float(k)/float(n_layers)
-        u[i,j,k]=u[i,j,k]*wp.max(1.0-drag*(1.0-frac),0.0)
+        u[i,j,k]=u[i,j,k]*wp.exp(-drag_rate*dt*(1.0-frac))
 
 @wp.kernel
 def reflect_puffs_at_boundary(
@@ -1225,7 +1229,7 @@ class HybridFluidPuffSimulation:
                   inputs=[self.u0,float(wx),float(wy),float(wz),
                           _nudge_alpha,dt,float(shear_exp),self.turb_field,
                           self.obstacle_mask])
-        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate*dt),3])
+        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate),float(dt),3])
 
         # Zero velocity inside obstacles before advection
         wp.launch(enforce_velocity_obstacle, dim=shape,
