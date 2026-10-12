@@ -1447,6 +1447,28 @@ class HybridFluidPuffSimulation:
     def step(self):
         self.emit_puff(); self.step_wind(); self.step_puffs(); self.sim_time+=self.sim_dt
 
+    def inject_puffs(self, positions, ages=None, masses=1.0):
+        """Replace all puffs with the given set (tests/validation only).
+
+        positions: (N, 3) m; ages: (N,) s (default 1 s); masses: kg, scalar or (N,).
+        N must be ≤ max_puffs. Puff σ follows the growth law for its age.
+        """
+        positions = np.asarray(positions, dtype=np.float32).reshape(-1, 3)
+        n = len(positions)
+        if n > self.max_puffs:
+            raise ValueError(f"{n} puffs > max_puffs={self.max_puffs}")
+        ages = np.ones(n) if ages is None else np.broadcast_to(np.asarray(ages, float), (n,))
+        masses = np.broadcast_to(np.asarray(masses, float), (n,))
+        pos = np.zeros((self.max_puffs, 3), np.float32); pos[:n] = positions
+        act = np.zeros(self.max_puffs, np.int32); act[:n] = 1
+        emt = np.zeros(self.max_puffs, np.float32); emt[:n] = self.sim_time - ages
+        mas = np.zeros(self.max_puffs, np.float32); mas[:n] = masses
+        wp.copy(self.puff_pos, wp.array(pos, dtype=wp.vec3))
+        wp.copy(self.puff_active, wp.array(act, dtype=int))
+        wp.copy(self.puff_emit_time, wp.array(emt, dtype=float))
+        wp.copy(self.puff_mass, wp.array(mas, dtype=float))
+        self.next_puff_idx = n
+
     def get_puff_data(self):
         pos=self.puff_pos.numpy(); active=self.puff_active.numpy(); emit_t=self.puff_emit_time.numpy()
         n=min(self.next_puff_idx,self.max_puffs); mask=active[:n]==1

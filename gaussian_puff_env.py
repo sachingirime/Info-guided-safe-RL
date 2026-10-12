@@ -2,10 +2,10 @@
 gaussian_puff_env.py — Gymnasium RL environment for drone-based gas source localisation.
 
 Wraps a GPU-accelerated 3D Stable Fluids + Gaussian Puff simulation.
-State:  s = [p_norm(3), w_norm(3), c_soft(1), c_detect(1), ζ⁻¹(1)] = 9D,
-        all channels in [0, 1]; concentration channels use soft log1p/sigmoid
-        (no hard gate — sub-threshold traces are visible to the network)
-Action: velocity command in R³, clipped to [-V_MAX, V_MAX]
+State:  s = [p_norm(3), w_norm(3), c_soft(1), c_detect(1), ζ⁻¹(1), d_mle(1)] = 10D
+        (+ info_map_size channels), all in [0, 1]; concentration channels use
+        soft log1p/sigmoid (no hard gate — sub-threshold traces are visible)
+Action: velocity command in R³, clipped to [-V_MAX, V_MAX] (V_MAX = 10 m/s)
 """
 
 import numpy as np
@@ -77,7 +77,7 @@ class GaussianPuffEnv(gym.Env):
     3D Gaussian Puff Environment backed by GPU Stable Fluids simulation
     with full 360-degree atmospheric wind model.
 
-    Observation (9D, all normalised to [0, 1]):
+    Observation (10D + info_map_size, all normalised to [0, 1]):
         0-2  p_norm      position / domain_max
         3-5  w_norm       (w / WIND_MAX + 1) / 2  — normalised wind vector
         6    c_norm       soft log1p concentration (no hard gate; sub-threshold
@@ -85,6 +85,9 @@ class GaussianPuffEnv(gym.Env):
         7    c_detected   soft sigmoid detection confidence (0.5 at noise floor;
                           continuous gradient replaces binary 0/1 flag)
         8    ζ_inv        EMGR observability metric (injected by training loop)
+        9    d_mle        ‖p − θ̂_MLE‖ / ‖domain‖ (θ̂ injected via set_theta_hat;
+                          1.0 until set).  Not a concentration.
+        10…  info map     optional EMGR information-map channels
 
     Phase behaviour (soft transitions via c_detected sigmoid):
         c_detected ≈ 0 → exploration.  Wind vector is the primary cue;
@@ -205,7 +208,14 @@ class GaussianPuffEnv(gym.Env):
     # Reward / convergence
     # ------------------------------------------------------------------
     LAMBDA_CTRL   = 0.01
-    CONVERGE_DIST = 0.0
+    CONVERGE_DIST = 0.0     # RL setting: never terminates on distance.
+                            # Planner runs use their own convergence radius.
+
+    # ------------------------------------------------------------------
+    # Warm-up: sim time advanced in reset() so episodes start with a
+    # developed plume (pre-fix: 10 frames ≈ 0.33 s).
+    # ------------------------------------------------------------------
+    WARMUP_S = 60.0
 
     # ------------------------------------------------------------------
     # Fixed obstacles
@@ -245,7 +255,7 @@ class GaussianPuffEnv(gym.Env):
     def __init__(self, seed: int = None, source_mobile: bool = False,
                  stability_class: str = "D", info_map_size: int = 0,
                  source_xy_min=None, source_xy_max=None, source_z_max=None,
-                 **sim_kwargs):
+                 warmup_s: float = None, **sim_kwargs):
         """
         sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
         f_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
@@ -253,6 +263,8 @@ class GaussianPuffEnv(gym.Env):
         """
         super().__init__()
         self._sim_kwargs = dict(sim_kwargs)
+        if warmup_s is not None:
+            self.WARMUP_S = float(warmup_s)
 
         self.source_mobile = source_mobile
         self.stability_class = stability_class
@@ -332,9 +344,9 @@ class GaussianPuffEnv(gym.Env):
 
     # ------------------------------------------------------------------
 
-    def _reset_fluid_sim_inplace(self, wind_angle: float, wind_seed: int):
+    def _reset_fluid_sim_inplace(self, wind_angle: float, wind_seed: int, puff_seed: int):
         """Reset simulation state in-place (reuses GPU allocations + kernels)."""
-        self.fluid_sim.reset(wind_angle, wind_seed)
+        self.fluid_sim.reset(wind_angle, wind_seed, seed=puff_seed)
 
     # ------------------------------------------------------------------
 
@@ -445,12 +457,14 @@ class GaussianPuffEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
-        # Derive wind seed from env rng for reproducibility
+        # Derive wind and puff-noise seeds from the env rng: every episode
+        # differs, and a fixed reset seed reproduces the episode exactly.
         wind_seed = int(self._rng.integers(0, 2**31))
         random_wind_angle = float(self._rng.uniform(0.0, 360.0))
+        puff_seed = int(self._rng.integers(0, 2**31))
 
         # Reset fluid sim in-place (reuses GPU allocations)
-        self._reset_fluid_sim_inplace(random_wind_angle, wind_seed)
+        self._reset_fluid_sim_inplace(random_wind_angle, wind_seed, puff_seed)
         self._configure_fluid_sim()
 
         # Source position
@@ -461,18 +475,18 @@ class GaussianPuffEnv(gym.Env):
         ])
         self._src_mean = self.theta.copy()
 
-        # Set source position before warmup so puffs emit from the right place
-        self.fluid_sim.source_pos = self.theta.astype(np.float32)
-
-        # Warm up
-        for _ in range(10):
-            self.fluid_sim.step()
-
-        # Build obstacles
+        # Build obstacles before warm-up so the wind and plume develop around them
         self.obstacles = self._sample_obstacles()
         spheres = [o for o in self.obstacles if isinstance(o, SphereObstacle)]
         cuboids = [o for o in self.obstacles if isinstance(o, CuboidObstacle)]
         self.fluid_sim.set_obstacles(spheres, cuboids)
+
+        # Set source position before warmup so puffs emit from the right place
+        self.fluid_sim.source_pos = self.theta.astype(np.float32)
+
+        # Warm up: WARMUP_S of sim time so the plume is developed at t = 0
+        for _ in range(int(round(self.WARMUP_S / self.fluid_sim.frame_dt))):
+            self.fluid_sim.step()
 
         # Drone spawn
         for _ in range(2000):
