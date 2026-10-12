@@ -146,7 +146,8 @@ class GaussianPuffEnv(gym.Env):
                             # outlive 1024 × 0.2 s = 205 s and were overwritten — 20–213 per
                             # 200 s episode, up to 16% of emitted mass; see sim.n_overwritten)
 
-    SIGMA_0 = 2.0           # m — initial puff standard deviation
+    SIGMA_0 = 1.0           # m — initial puff standard deviation (was 2.0: larger than
+                            # Briggs D σ_z at 25 m; LSM T_L table is fitted for σ₀ = 1 m)
 
     # ------------------------------------------------------------------
     # Mobile source — exact OU
@@ -171,7 +172,7 @@ class GaussianPuffEnv(gym.Env):
     LOG_C_EPS        = 1e-10          # guard against log(0)
     CONC_NOISE_FLOOR = 3e-4           # 3 × SIGMA_E — detection threshold (kg/m³)
     LOG_C_SIG_MIN    = np.log(3e-4)   # = -8.11  (detection edge)
-    LOG_C_SIG_MAX    = np.log(5e-3)   # = -2.30  (near-source peak)
+    LOG_C_SIG_MAX    = np.log(1e-1)   # = -2.30  (near-source peak; unused, kept = log(CONC_SIG_CEIL))
 
     # Soft log1p concentration normalisation (replaces hard-gated log mapping)
     #   c_soft = log(1 + c_signal/CONC_LOG_SCALE) / log(1 + C_SIG_CEIL/CONC_LOG_SCALE)
@@ -182,7 +183,10 @@ class GaussianPuffEnv(gym.Env):
     #     moderate    (1e-2)          → c_soft ≈ 0.67
     #     near-source (1e-1)          → c_soft = 1.00
     CONC_LOG_SCALE     = 1e-4         # log1p sensitivity scale (≈ sensor σ_e)
-    CONC_SIG_CEIL      = 5e-3         # kg/m³ — normalisation ceiling
+    CONC_SIG_CEIL      = 1e-1         # kg/m³ — normalisation ceiling (was 5e-3, tuned for the
+                                   # pre-fix plume; the calibrated plume's detected C has median
+                                   # 4–7e-3 and p99 0.22–0.25, so 5e-3 saturated c_norm for
+                                   # 41–55% of detections.  1e-1 also matches the table above.)
     DETECT_TEMPERATURE = 1e-4         # kg/m³ — sigmoid width for soft detection
 
     # ------------------------------------------------------------------
@@ -204,6 +208,13 @@ class GaussianPuffEnv(gym.Env):
     #   w_norm_i = clip(w_i / WIND_MAX, -1, 1) * 0.5 + 0.5
     # ------------------------------------------------------------------
     WIND_MAX = 5.0  # m/s — symmetric clamp for each component
+
+    # ------------------------------------------------------------------
+    # Anemometer turbulence: the resolved wind is smooth, so the observed
+    # wind adds OU noise with the class LSM intensities (σ_u, σ_v, σ_w of
+    # the sim) and a short correlation time.  Off with wind_noise=False.
+    # ------------------------------------------------------------------
+    WIND_NOISE_TAU = 1.0    # s
 
     # ------------------------------------------------------------------
     # Reward / convergence
@@ -256,7 +267,8 @@ class GaussianPuffEnv(gym.Env):
     def __init__(self, seed: int = None, source_mobile: bool = False,
                  stability_class: str = "D", info_map_size: int = 0,
                  source_xy_min=None, source_xy_max=None, source_z_max=None,
-                 warmup_s: float = None, **sim_kwargs):
+                 warmup_s: float = None, wind_noise: bool = True,
+                 wind_noise_tau: float = None, **sim_kwargs):
         """
         sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
         K_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
@@ -266,6 +278,10 @@ class GaussianPuffEnv(gym.Env):
         self._sim_kwargs = dict(sim_kwargs)
         if warmup_s is not None:
             self.WARMUP_S = float(warmup_s)
+        self.wind_noise = bool(wind_noise)
+        if wind_noise_tau is not None:
+            self.WIND_NOISE_TAU = float(wind_noise_tau)
+        self._wind_noise_state = np.zeros(3)
 
         self.source_mobile = source_mobile
         self.stability_class = stability_class
@@ -395,6 +411,17 @@ class GaussianPuffEnv(gym.Env):
         c1  = c01*(1-ty)  + c11*ty
         return (c0*(1-tz) + c1*tz).astype(np.float64)
 
+    def _observed_wind(self) -> np.ndarray:
+        """Anemometer reading: resolved wind at the drone + OU turbulence."""
+        w = self._sample_wind_at(self.p)
+        if not self.wind_noise:
+            return w
+        sig = np.array(self.fluid_sim.lsm_sigma)
+        a = np.exp(-self.DT / self.WIND_NOISE_TAU)
+        self._wind_noise_state = (a * self._wind_noise_state
+                                  + sig * np.sqrt(1.0 - a * a) * self._rng.standard_normal(3))
+        return w + self._wind_noise_state
+
     # ── Obstacle generation ───────────────────────────────────────────────
 
     def _sample_obstacles(self) -> List:
@@ -514,7 +541,9 @@ class GaussianPuffEnv(gym.Env):
             self.p = np.array([230.0, 115.0, self.SPAWN_Z_MIN + 5.0])
 
         self.v = np.zeros(3, dtype=np.float64)
-        self.w = self._sample_wind_at(self.p)
+        self._wind_noise_state = (np.array(self.fluid_sim.lsm_sigma) * self._rng.standard_normal(3)
+                                  if self.wind_noise else np.zeros(3))
+        self.w = self._observed_wind()
         self.t = 0.0
         self.step_count = 0
         self._zeta_inv_norm = 0.0    # reset EMGR metric each episode
@@ -559,7 +588,7 @@ class GaussianPuffEnv(gym.Env):
         self.t          += self.DT
         self.step_count += 1
 
-        self.w       = self._sample_wind_at(self.p)
+        self.w       = self._observed_wind()
         self._c_true = self.concentration(self.p)
         self._y_sensor = self._get_sensor_reading()
 
