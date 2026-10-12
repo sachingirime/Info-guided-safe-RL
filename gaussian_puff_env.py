@@ -244,8 +244,15 @@ class GaussianPuffEnv(gym.Env):
 
     def __init__(self, seed: int = None, source_mobile: bool = False,
                  stability_class: str = "D", info_map_size: int = 0,
-                 source_xy_min=None, source_xy_max=None, source_z_max=None):
+                 source_xy_min=None, source_xy_max=None, source_z_max=None,
+                 **sim_kwargs):
+        """
+        sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
+        f_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
+        enable_turbulence, enable_gusts, steady_wind, shear_exponent, use_los).
+        """
         super().__init__()
+        self._sim_kwargs = dict(sim_kwargs)
 
         self.source_mobile = source_mobile
         self.stability_class = stability_class
@@ -302,6 +309,7 @@ class GaussianPuffEnv(gym.Env):
             wind_base_speed=self.WIND_BASE_SPEED,
             max_puffs=self.N_PUFFS,
             wind_seed=wind_seed,
+            **self._sim_kwargs,
         )
 
         self._configure_fluid_sim()
@@ -326,44 +334,7 @@ class GaussianPuffEnv(gym.Env):
 
     def _reset_fluid_sim_inplace(self, wind_angle: float, wind_seed: int):
         """Reset simulation state in-place (reuses GPU allocations + kernels)."""
-        sim = self.fluid_sim
-
-        # Zero all field arrays
-        sim.u0.zero_()
-        sim.u1.zero_()
-        sim.p0.zero_()
-        sim.div.zero_()
-        sim.rho0.zero_()
-        sim.rho1.zero_()
-        sim.rho_tmp.zero_()
-        sim.conc_grid.zero_()
-
-        # Zero puff pool
-        sim.puff_pos     = wp.zeros(sim.max_puffs, dtype=wp.vec3)
-        sim.puff_active  = wp.zeros(sim.max_puffs, dtype=int)
-        sim.puff_emit_time = wp.zeros(sim.max_puffs, dtype=float)
-        sim.next_puff_idx   = 0
-        sim.last_emit_time  = -999.0
-
-        # Reset time
-        sim.sim_time = 0.0
-
-        # Reset spatial turbulence field — warm-start from OU stationary dist
-        import math as _m
-        _turb_stat_std = sim._turb_ou_sigma / _m.sqrt(2.0 * sim._turb_ou_theta)
-        sim._turb_np = (_turb_stat_std * sim._rng.standard_normal(
-            (*sim._turb_shape, 3))).astype(np.float32)
-        wp.copy(sim.turb_field, wp.array(sim._turb_np, dtype=wp.vec3))
-        sim._rng = np.random.default_rng(wind_seed)
-
-        # Re-initialise wind model with new angle and seed
-        from stable_fluid_3d import WindVectorModel
-        sim.wind_model = WindVectorModel(
-            center_angle=wind_angle,
-            angle_range=self.WIND_ANGLE_RANGE,
-            base_speed=self.WIND_BASE_SPEED,
-            seed=wind_seed,
-        )
+        self.fluid_sim.reset(wind_angle, wind_seed)
 
     # ------------------------------------------------------------------
 

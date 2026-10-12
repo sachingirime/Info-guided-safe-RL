@@ -739,8 +739,14 @@ class WindVectorModel:
                  speed_variance=0.5, ou_theta=0.02, ou_sigma=0.15,  # <-- Reduced noise (was 0.8)
                  gust_interval=15.0, gust_duration=2.0,
                  gust_strength_range=(0.5, 1.5), vertical_component=0.1, # <-- Weakened gusts
-                 shear_exponent=0.25, seed=42):
-        
+                 shear_exponent=0.25, seed=42,
+                 enable_turbulence=True, enable_gusts=True, steady=False):
+        """
+        enable_turbulence : False zeroes the three OU turbulence layers.
+        enable_gusts      : False disables the gust model.
+        steady            : True removes all randomness (mean-wind OU, turbulence
+                            layers, gusts): the wind is exactly the mean vector.
+        """
         self.center_rad = math.radians(center_angle)
         # Mean wind vector from direction and speed
         self.u_mean = base_speed * math.cos(self.center_rad)
@@ -752,11 +758,16 @@ class WindVectorModel:
         self.shear_exponent = shear_exponent
         self.angle_range_rad = math.radians(angle_range)
         self.rng = np.random.default_rng(seed)
+        self.steady = bool(steady)
+        self.enable_turbulence = bool(enable_turbulence) and not self.steady
+        self.enable_gusts = bool(enable_gusts) and not self.steady
 
         # OU parameters per component: [u, v, w]
         # Tighter reversion and lower noise for a stable plume
         self._kappa = np.array([ou_theta, ou_theta, 0.05])
         self._sigma = np.array([ou_sigma, ou_sigma, 0.05])
+        if self.steady:
+            self._sigma = np.zeros(3)
 
         # Wind state (u, v, w) — warm-started from stationary distribution
         self._wind_mean = np.array([self.u_mean, self.v_mean, self.w_mean])
@@ -766,6 +777,8 @@ class WindVectorModel:
         # Multi-scale turbulence: scaled down to avoid tearing the plume apart
         self._turb_kappas = [0.05, 0.15, 0.40]
         self._turb_sigmas = [0.20, 0.15, 0.10] # <-- Was 0.80, 0.50, 0.30
+        if not self.enable_turbulence:
+            self._turb_sigmas = [0.0, 0.0, 0.0]
         self._turb_states = np.zeros((3, 3))  
         for _layer_idx in range(3):
             _layer_std = self._turb_sigmas[_layer_idx] / np.sqrt(2.0 * self._turb_kappas[_layer_idx])
@@ -773,7 +786,7 @@ class WindVectorModel:
             self._turb_states[_layer_idx, 2] *= 0.1  
 
         # Gust model 
-        self.gust_interval = gust_interval
+        self.gust_interval = gust_interval if self.enable_gusts else math.inf
         self.gust_duration = gust_duration
         self.gust_strength_range = gust_strength_range
         self._gust_timer = 0.0
@@ -812,6 +825,8 @@ class WindVectorModel:
             self._turb_states[layer, 2] *= 0.1
 
         # Gust model
+        if not self.enable_gusts:
+            return
         self._gust_timer += dt
         if not self._gust_active:
             if self._gust_timer > self.rng.exponential(self.gust_interval):
@@ -879,7 +894,57 @@ class HybridFluidPuffSimulation:
     T_SURFACE  = T_SURFACE_DEFAULT    # K, surface temperature
 
     def __init__(self, wind_center_angle=45.0, wind_angle_range=40.0,
-                 wind_base_speed=4.5, wind_seed=42, max_puffs=1024):
+                 wind_base_speed=4.5, wind_seed=42, max_puffs=1024,
+                 seed=None,
+                 use_grid_gas=False,
+                 f_rel=0.5,
+                 buoyancy_mode="none",
+                 w_rise0=0.0,
+                 ground_drag_rate=2.4,
+                 release_jitter=0.0,
+                 enable_turbulence=True,
+                 enable_gusts=True,
+                 steady_wind=False,
+                 shear_exponent=None,
+                 use_los=True,
+                 legacy_emission=False):
+        """
+        seed              : puff RNG seed (defaults to wind_seed).
+        use_grid_gas      : legacy Eulerian gas field + source momentum jet.
+                            Kept only to reproduce pre-fix figures.
+        f_rel             : share of K used for puff growth; the remaining
+                            (1 - f_rel) drives seeded centroid noise.
+        buoyancy_mode     : "none" (neutral / dilute gas) or "rise".
+        w_rise0           : initial rise speed (m/s) for "rise" mode.
+        ground_drag_rate  : 1/s. Old value was 0.08 per frame at 30 fps (~2.4/s).
+        release_jitter    : m, std of release position noise (old hidden value 1.5).
+        enable_turbulence : coarse OU field + three OU turbulence layers.
+        enable_gusts      : gust model.
+        steady_wind       : no wind randomness at all (validation).
+        shear_exponent    : overrides the PG shear exponent (V1 uses 0).
+        use_los           : line-of-sight occlusion of puffs by obstacles.
+        legacy_emission   : pre-fix emission (two puffs per interval). Legacy only.
+        """
+        self.seed = int(wind_seed if seed is None else seed)
+        self.use_grid_gas = bool(use_grid_gas)
+        self.f_rel = float(f_rel)
+        if not 0.0 <= self.f_rel <= 1.0:
+            raise ValueError("f_rel must be in [0, 1]")
+        if buoyancy_mode not in ("none", "rise"):
+            raise ValueError("buoyancy_mode must be 'none' or 'rise'")
+        self.buoyancy_mode = buoyancy_mode
+        self.w_rise0 = float(w_rise0)
+        self.ground_drag_rate = float(ground_drag_rate)
+        self.release_jitter = float(release_jitter)
+        self.enable_turbulence = bool(enable_turbulence) and not steady_wind
+        self.enable_gusts = bool(enable_gusts) and not steady_wind
+        self.steady_wind = bool(steady_wind)
+        self.shear_exponent_override = None if shear_exponent is None else float(shear_exponent)
+        self.use_los = bool(use_los)
+        self.legacy_emission = bool(legacy_emission)
+        self.wind_angle_range = wind_angle_range
+        self.wind_base_speed = wind_base_speed
+
         self.fps=30; self.frame_dt=1.0/self.fps; self.sim_dt=self.frame_dt; self.sim_time=0.0
         self.dx=DX; self.wind_shape=(NX, NY, NZ)
 
@@ -905,12 +970,7 @@ class HybridFluidPuffSimulation:
         self.sigma_0 = 2.0      # m — initial puff standard deviation
         self.K_d = max(self.K_D_X, self.K_D_Y, self.K_D_Z)  # isotropic proxy for viz
 
-        self.wind_model=WindVectorModel(
-            center_angle=wind_center_angle,
-            angle_range=wind_angle_range,
-            base_speed=wind_base_speed,
-            seed=wind_seed,
-        )
+        self.wind_model=self._make_wind_model(wind_center_angle, wind_seed)
 
         self._rng = np.random.default_rng(wind_seed)
 
@@ -924,7 +984,7 @@ class HybridFluidPuffSimulation:
         # (Gardiner 2009, §4.5) — eliminates zero-turbulence cold start.
         self._turb_shape = (_TURB_NX, _TURB_NY, _TURB_NZ)
         self._turb_ou_theta = 0.1
-        self._turb_ou_sigma = 1.2
+        self._turb_ou_sigma = 1.2 if self.enable_turbulence else 0.0
         _turb_stat_std = self._turb_ou_sigma / math.sqrt(2.0 * self._turb_ou_theta)
         self._turb_np = (_turb_stat_std * self._rng.standard_normal(
             (*self._turb_shape, 3))).astype(np.float32)
@@ -932,6 +992,41 @@ class HybridFluidPuffSimulation:
 
         # SOR pressure solver residual buffer
         self._sor_residual = wp.zeros(1, dtype=float)
+
+    def _make_wind_model(self, center_angle, seed):
+        wm = WindVectorModel(
+            center_angle=center_angle,
+            angle_range=self.wind_angle_range,
+            base_speed=self.wind_base_speed,
+            seed=seed,
+            enable_turbulence=self.enable_turbulence,
+            enable_gusts=self.enable_gusts,
+            steady=self.steady_wind,
+        )
+        if self.shear_exponent_override is not None:
+            wm.shear_exponent = self.shear_exponent_override
+        return wm
+
+    def reset(self, wind_center_angle, wind_seed, seed=None):
+        """Reset all state in place (reuses GPU allocations and kernels)."""
+        for a in (self.u0, self.u1, self.p0, self.div, self.rho0, self.rho1,
+                  self.rho_tmp, self.conc_grid):
+            a.zero_()
+        self.puff_pos.zero_(); self.puff_active.zero_(); self.puff_emit_time.zero_()
+        self.next_puff_idx = 0
+        self.last_emit_time = -999.0
+        self.sim_time = 0.0
+        if seed is not None:
+            self.seed = int(seed)
+        self._rng = np.random.default_rng(wind_seed)
+        # Spatial turbulence field — warm-start from OU stationary distribution
+        _turb_stat_std = self._turb_ou_sigma / math.sqrt(2.0 * self._turb_ou_theta)
+        self._turb_np = (_turb_stat_std * self._rng.standard_normal(
+            (*self._turb_shape, 3))).astype(np.float32)
+        wp.copy(self.turb_field, wp.array(self._turb_np, dtype=wp.vec3))
+        shear = self.wind_model.shear_exponent
+        self.wind_model = self._make_wind_model(wind_center_angle, wind_seed)
+        self.wind_model.shear_exponent = shear
 
     def set_stability_class(self, pg_class: str = "D"):
         """Set K_D, Langevin, lapse rate, and shear exponent from PG class (A–G)."""
@@ -949,7 +1044,9 @@ class HybridFluidPuffSimulation:
         # Lapse rate for temperature-based buoyancy (NOAA READY ranges)
         self.LAPSE_RATE = PG_LAPSE_RATES[pg_class]
         # Shear exponent for power-law vertical wind profile
-        self.wind_model.shear_exponent = PG_SHEAR_EXPONENTS[pg_class]
+        self.wind_model.shear_exponent = (PG_SHEAR_EXPONENTS[pg_class]
+                                          if self.shear_exponent_override is None
+                                          else self.shear_exponent_override)
         # Legacy scalar K_d — max of anisotropic values (used by viz for puff sizing)
         self.K_d = max(self.K_D_X, self.K_D_Y, self.K_D_Z)
 
@@ -998,9 +1095,9 @@ class HybridFluidPuffSimulation:
     def emit_puff(self):
         if self.sim_time-self.last_emit_time<self.emit_interval: return
         pos_np=self.puff_pos.numpy(); act_np=self.puff_active.numpy(); emt_np=self.puff_emit_time.numpy()
-        for _ in range(2):
+        for _ in range(2 if self.legacy_emission else 1):
             idx=self.next_puff_idx%self.max_puffs
-            pos_np[idx]=self.source_pos + self._rng.standard_normal(3).astype(np.float32)*1.5
+            pos_np[idx]=self.source_pos + self._rng.standard_normal(3).astype(np.float32)*self.release_jitter
             act_np[idx]=1; emt_np[idx]=self.sim_time; self.next_puff_idx+=1
         wp.copy(self.puff_pos,wp.array(pos_np,dtype=wp.vec3))
         wp.copy(self.puff_active,wp.array(act_np,dtype=int))
@@ -1025,7 +1122,7 @@ class HybridFluidPuffSimulation:
                   inputs=[self.u0,float(wx),float(wy),float(wz),
                           _nudge_alpha,dt,float(shear_exp),self.turb_field,
                           self.obstacle_mask])
-        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,0.08,3])
+        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate*dt),3])
 
         # Zero velocity inside obstacles before advection
         wp.launch(enforce_velocity_obstacle, dim=shape,
