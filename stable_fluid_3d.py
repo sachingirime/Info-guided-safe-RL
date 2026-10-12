@@ -589,6 +589,7 @@ def apply_ground_drag(u: wp.array3d(dtype=wp.vec3), drag:float, n_layers:int):
 def reflect_puffs_at_boundary(
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
     domain_max_x:float, domain_max_y:float, domain_max_z:float,
+    counters: wp.array(dtype=int),
 ):
     i=wp.tid()
     if puff_active[i]==0: return
@@ -596,6 +597,7 @@ def reflect_puffs_at_boundary(
     # Open faces (x, y, z_top): deactivate puffs that leave the domain
     if px<0.0 or px>domain_max_x or py<0.0 or py>domain_max_y or pz>domain_max_z:
         puff_active[i]=0
+        wp.atomic_add(counters, COUNTER_EXITED, 1)
         return
     # Ground (z=0): solid wall — reflect back
     if pz<0.0:
@@ -603,6 +605,26 @@ def reflect_puffs_at_boundary(
     puff_pos[i]=wp.vec3(px, py, pz)
 
 # ── Lagrangian puffs ─────────────────────────────────────────────────────────
+
+# Indices into HybridFluidPuffSimulation._counters
+COUNTER_OVERWRITTEN = wp.constant(0)
+COUNTER_EXITED = wp.constant(1)
+
+@wp.kernel
+def emit_puff_kernel(
+    puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float),
+    idx: int, pos: wp.vec3, emit_time: float, mass: float,
+    counters: wp.array(dtype=int),
+):
+    # A still-active puff in this ring-buffer slot means max_puffs is too
+    # small and its mass is lost: count it.
+    if puff_active[idx] == 1:
+        wp.atomic_add(counters, COUNTER_OVERWRITTEN, 1)
+    puff_pos[idx] = pos
+    puff_active[idx] = 1
+    puff_emit_time[idx] = emit_time
+    puff_mass[idx] = mass
 
 @wp.kernel
 def advect_puffs_rk2(
@@ -671,8 +693,8 @@ def query_sensor_hybrid(
     sensor_pos: wp.array(dtype=wp.vec3),
     rho_grid: wp.array3d(dtype=float), rho_scale:float, dx:float,
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
-    puff_emit_time: wp.array(dtype=float), current_time:float,
-    Q_dt:float, sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float,
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
+    sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float,
     num_puffs:int, concentration: wp.array(dtype=float),
 ):
     s=wp.tid(); p=sensor_pos[s]
@@ -700,7 +722,7 @@ def query_sensor_hybrid(
         gauss_xy=wp.exp(-0.5*r2_xy)
         gauss_z_real=wp.exp(-0.5*dz_real*dz_real/sig2_z)
         gauss_z_image=wp.exp(-0.5*dz_image*dz_image/sig2_z)
-        norm=Q_dt/(15.74960995*sig_x*sig_y*sig_z)
+        norm=puff_mass[i]/(15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
         c_puff=c_puff+norm*gauss_xy*(gauss_z_real+gauss_z_image)
     concentration[s]=c_grid+c_puff
 
@@ -708,8 +730,8 @@ def query_sensor_hybrid(
 def compute_concentration_grid_kernel(
     conc_grid: wp.array3d(dtype=float), rho_grid: wp.array3d(dtype=float), rho_scale:float,
     puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
-    puff_emit_time: wp.array(dtype=float), current_time:float,
-    Q_dt:float, sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float, dx:float, num_puffs:int,
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time:float,
+    sigma_0:float, K_d_x:float, K_d_y:float, K_d_z:float, dx:float, num_puffs:int,
 ):
     i,j,k=wp.tid()
     px=(float(i)+0.5)*dx; py=(float(j)+0.5)*dx; pz=(float(k)+0.5)*dx
@@ -731,7 +753,7 @@ def compute_concentration_grid_kernel(
         gauss_xy=wp.exp(-0.5*r2_xy)
         gauss_z_real=wp.exp(-0.5*dz_real*dz_real/sig2_z)
         gauss_z_image=wp.exp(-0.5*dz_image*dz_image/sig2_z)
-        norm=Q_dt/(15.74960995*sig_x*sig_y*sig_z)
+        norm=puff_mass[n]/(15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
         total_c=total_c+norm*gauss_xy*(gauss_z_real+gauss_z_image)
     conc_grid[i,j,k]=total_c
 
@@ -974,7 +996,11 @@ class HybridFluidPuffSimulation:
         self.puff_pos=wp.zeros(self.max_puffs,dtype=wp.vec3)
         self.puff_active=wp.zeros(self.max_puffs,dtype=int)
         self.puff_emit_time=wp.zeros(self.max_puffs,dtype=float)
-        self.next_puff_idx=0; self.emit_interval=0.05; self.last_emit_time=-999.0
+        self.puff_mass=wp.zeros(self.max_puffs,dtype=float)   # kg per puff, set at release
+        self.next_puff_idx=0; self.emit_interval=0.05
+        self._next_emit_time=0.0   # emission schedule: t_n = n·emit_interval
+        self.n_emitted=0
+        self._counters=wp.zeros(2,dtype=int)   # [overwritten, exited]
 
         self.source_pos=np.array([NX//4*DX, NY//4*DX, 2*DX],dtype=np.float32)
 
@@ -1025,8 +1051,10 @@ class HybridFluidPuffSimulation:
                   self.rho_tmp, self.conc_grid):
             a.zero_()
         self.puff_pos.zero_(); self.puff_active.zero_(); self.puff_emit_time.zero_()
+        self.puff_mass.zero_(); self._counters.zero_()
         self.next_puff_idx = 0
-        self.last_emit_time = -999.0
+        self._next_emit_time = 0.0
+        self.n_emitted = 0
         self.sim_time = 0.0
         if seed is not None:
             self.seed = int(seed)
@@ -1104,17 +1132,38 @@ class HybridFluidPuffSimulation:
         self._turb_np += noise_std * self._rng.standard_normal(self._turb_np.shape).astype(np.float32)
         wp.copy(self.turb_field, wp.array(self._turb_np.reshape(*self._turb_shape, 3), dtype=wp.vec3))
 
+    @property
+    def n_overwritten(self):
+        """Puffs overwritten while still active (ring buffer too small → mass lost)."""
+        return int(self._counters.numpy()[0])
+
+    @property
+    def n_exited(self):
+        """Puffs removed at the open domain faces."""
+        return int(self._counters.numpy()[1])
+
     def emit_puff(self):
-        if self.sim_time-self.last_emit_time<self.emit_interval: return
-        pos_np=self.puff_pos.numpy(); act_np=self.puff_active.numpy(); emt_np=self.puff_emit_time.numpy()
-        for _ in range(2 if self.legacy_emission else 1):
-            idx=self.next_puff_idx%self.max_puffs
-            pos_np[idx]=self.source_pos + self._rng.standard_normal(3).astype(np.float32)*self.release_jitter
-            act_np[idx]=1; emt_np[idx]=self.sim_time; self.next_puff_idx+=1
-        wp.copy(self.puff_pos,wp.array(pos_np,dtype=wp.vec3))
-        wp.copy(self.puff_active,wp.array(act_np,dtype=int))
-        wp.copy(self.puff_emit_time,wp.array(emt_np,dtype=float))
-        self.last_emit_time=self.sim_time
+        """Release puffs on the fixed schedule t_n = n·emit_interval.
+
+        Mass per puff = Q · emit_interval, so the release rate is exactly Q.
+        (Pre-fix: two puffs per interval → 2Q, and float drift in
+        `sim_time - last_emit < emit_interval` stretched 0.2 s to 7 frames.)
+        """
+        n_per = 2 if self.legacy_emission else 1
+        while self.sim_time + 1e-9 >= self._next_emit_time:
+            mass = float(self.Q * self.emit_interval)
+            for _ in range(n_per):
+                idx = self.next_puff_idx % self.max_puffs
+                pos = self.source_pos.astype(np.float64)
+                if self.release_jitter > 0.0:
+                    pos = pos + self._rng.standard_normal(3) * self.release_jitter
+                wp.launch(emit_puff_kernel, dim=1, inputs=[
+                    self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
+                    idx, wp.vec3(*[float(v) for v in pos]), float(self.sim_time), mass,
+                    self._counters])
+                self.next_puff_idx += 1
+                self.n_emitted += 1
+            self._next_emit_time += self.emit_interval
 
     def _fixed_inject_dir(self):
         return wp.vec3(0.0, 0.0, 2.0)
@@ -1206,7 +1255,8 @@ class HybridFluidPuffSimulation:
         ])
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
             self.puff_pos,self.puff_active,
-            float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2])
+            float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
+            self._counters,
         ])
 
     def _rho_scale(self):
@@ -1214,20 +1264,20 @@ class HybridFluidPuffSimulation:
         return float(self.RHO_SCALE) if self.use_grid_gas else 0.0
 
     def compute_conc_grid(self):
-        n=min(self.next_puff_idx,self.max_puffs); Q_dt=self.Q*self.emit_interval
+        n=min(self.next_puff_idx,self.max_puffs)
         wp.launch(compute_concentration_grid_kernel,dim=self.wind_shape,inputs=[
             self.conc_grid,self.rho0,self._rho_scale(),
-            self.puff_pos,self.puff_active,self.puff_emit_time,
-            self.sim_time,Q_dt,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,self.dx,n
+            self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
+            self.sim_time,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,self.dx,n
         ])
 
     def query_concentration(self, sensor_positions_np):
         M=sensor_positions_np.shape[0]; sensors=wp.array(sensor_positions_np,dtype=wp.vec3)
-        conc=wp.zeros(M,dtype=float); n=min(self.next_puff_idx,self.max_puffs); Q_dt=self.Q*self.emit_interval
+        conc=wp.zeros(M,dtype=float); n=min(self.next_puff_idx,self.max_puffs)
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
             sensors,self.rho0,self._rho_scale(),self.dx,
-            self.puff_pos,self.puff_active,self.puff_emit_time,
-            self.sim_time,Q_dt,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,n,conc
+            self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
+            self.sim_time,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,n,conc
         ])
         return conc.numpy()
 
