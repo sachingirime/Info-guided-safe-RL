@@ -143,7 +143,9 @@ class GaussianPuffEnv(gym.Env):
     Q_INIT      = 5.0       # kg/s — methane mass emission rate
     Q_GROWTH    = 0.0       # kg/s² — emission rate increase over time (0 = constant)
     PUFF_PERIOD = 0.2       # s — interval between puff emissions
-    N_PUFFS     = 1024      # max Lagrangian puff particles
+    N_PUFFS     = 2048      # max Lagrangian puff particles (was 1024: slow near-ground puffs
+                            # outlive 1024 × 0.2 s = 205 s and were overwritten — 20–213 per
+                            # 200 s episode, up to 16% of emitted mass; see sim.n_overwritten)
 
     SIGMA_0 = 2.0           # m — initial puff standard deviation
 

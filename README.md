@@ -7,7 +7,7 @@ Built on [NVIDIA Warp](https://developer.nvidia.com/warp), the environment coupl
 ## Features
 
 - **GPU-accelerated 3D fluid simulation** via NVIDIA Warp (64x32x32 grid, 4 m cells, 256x128x128 m domain)
-- **Lagrangian Gaussian puff model** (up to 1024 puffs): RK2 advection on the resolved wind, seeded centroid noise, ground image, line-of-sight occlusion by obstacles
+- **Lagrangian Gaussian puff model** (up to 2048 puffs in the env): RK2 advection on the resolved wind, seeded centroid noise, ground image, line-of-sight occlusion by obstacles
 - **Pasquill-Gifford stability classes** (A-G) for turbulent diffusivity, shear exponent and lapse rate
 - **Methane sensor model** with bias, noise, first-order lag and soft sigmoid detection
 - **Mobile gas source** with Ornstein-Uhlenbeck drift
@@ -118,7 +118,7 @@ Tag `pre-fix` = commit `1d30cdb`. Branch `sim-fix` changes:
 7. **Ground drag** scaled by dt (was per frame).
 8. **Line-of-sight occlusion**: gas no longer leaks through obstacles.
 9. **Gusts** are a Poisson process with the stated mean interval (pre-fix fired every ~3 s, active 69% of the time).
-10. **Env**: per-episode puff seed, obstacles placed before a 60 s warm-up (was 0.33 s, after the plume started), corrected docstrings.
+10. **Env**: per-episode puff seed, obstacles placed before a 60 s warm-up (was 0.33 s, after the plume started), `N_PUFFS` 1024 → 2048 (1024 overwrote up to 16% of emitted puffs per episode), corrected docstrings.
 
 ## Citation
 

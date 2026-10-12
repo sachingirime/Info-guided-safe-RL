@@ -1,0 +1,876 @@
+{
+  "V0": {
+    "before": {
+      "sim_time": 119.99999999999575,
+      "grid_share": 0.2534923255443573,
+      "n_cells_above_thresh": 13891,
+      "w_max_source": 6.498135089874268,
+      "w_max_source_tmax": 6.82916784286499,
+      "median_puff_height": 36.909915924072266,
+      "source_z": 10.0,
+      "n_active_puffs": 967,
+      "rho_max": 1.8555285930633545,
+      "code": "tag pre-fix (1d30cdb)",
+      "note": "grid_share uses the SIM_FIX_PLAN definition (sum over cells, z in [4,60], C>3e-4) = 0.25. The median per-cell grid share with no threshold is 0.60 (closer to the audit's ~0.68); the value is definition-dependent but the grid term is clearly non-zero.",
+      "grid_share_median_cell_nothresh": 0.604
+    },
+    "after": {
+      "sim_time": 119.99999999999575,
+      "grid_share": 0.0,
+      "n_cells_above_thresh": 3916,
+      "w_max_source": 0.15251848101615906,
+      "w_max_source_tmax": 0.6487171053886414,
+      "median_puff_height": 7.486786842346191,
+      "source_z": 10.0,
+      "n_active_puffs": 596,
+      "rho_max": 0.0,
+      "divergence_residual": 0.008355052520831427,
+      "sor_iters": 25,
+      "n_emitted": 600,
+      "n_overwritten": 0,
+      "n_exited": 4,
+      "code": "sim-fix"
+    },
+    "pass": true,
+    "criterion": "grid_share == 0; |w| at source < 0.5 m/s (final snapshot); |median z \u2212 source z| < 5 m"
+  },
+  "V1": {
+    "setup": {
+      "source": [
+        30.0,
+        64.0,
+        30.0
+      ],
+      "U": 2.0,
+      "Q": 1.0,
+      "emit_interval": 0.2,
+      "class": "D",
+      "spin_s": 150.0,
+      "avg_s": 1800.0,
+      "sample_dt": 0.5,
+      "y_range": [
+        0,
+        128
+      ],
+      "z_range": [
+        0,
+        100
+      ],
+      "grid_m": 1.0
+    },
+    "criterion": "\u03c3_y, \u03c3_z within 5%; centerline C within 10%; flux within 5% of Q; n_overwritten == 0",
+    "runs": {
+      "0.0": {
+        "rows": [
+          {
+            "x_minus_xs": 25.0,
+            "sigma_y_ref": 9.9498743710662,
+            "sigma_z_ref": 6.041522986797286,
+            "sigma_y_sim": 10.353841864835964,
+            "sigma_y_analytic_grid": 9.949874352088987,
+            "err_sigma_y": 0.04060026272212802,
+            "sigma_z_sim": 6.187189018058417,
+            "sigma_z_analytic_grid": 6.041540236789897,
+            "err_sigma_z": 0.024107888975329894,
+            "centerline_sim": 0.0013009550924458482,
+            "centerline_analytic": 0.0013238113687752309,
+            "err_centerline": -0.01726550841645136,
+            "flux": 1.003074544363378,
+            "err_flux": 0.0030745443633779512,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 50.0,
+            "sigma_y_ref": 13.92838827718412,
+            "sigma_z_ref": 8.306623862918075,
+            "sigma_y_sim": 14.10722135850109,
+            "sigma_y_analytic_grid": 13.927823175072508,
+            "err_sigma_y": 0.01288056153309447,
+            "sigma_z_sim": 8.405754775037027,
+            "sigma_z_analytic_grid": 8.307961184740691,
+            "err_sigma_z": 0.011771069715149185,
+            "centerline_sim": 0.0006691306500205012,
+            "centerline_analytic": 0.0006878040450814514,
+            "err_centerline": -0.0271492952018606,
+            "flux": 0.9942472596925716,
+            "err_flux": -0.00575274030742845,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 100.0,
+            "sigma_y_ref": 19.595917942265423,
+            "sigma_z_ref": 11.575836902790225,
+            "sigma_y_sim": 19.508899285218067,
+            "sigma_y_analytic_grid": 19.481304619658495,
+            "err_sigma_y": 0.001416469076292115,
+            "sigma_z_sim": 11.655909139483278,
+            "sigma_z_analytic_grid": 11.52577397013744,
+            "err_sigma_z": 0.011290796581905127,
+            "centerline_sim": 0.0003564596956841473,
+            "centerline_analytic": 0.0003508106435834713,
+            "err_centerline": 0.016102852647148502,
+            "flux": 1.000611134171892,
+            "err_flux": 0.0006111341718919583,
+            "pass": true
+          }
+        ],
+        "n_overwritten": 0,
+        "n_emitted": 9750,
+        "n_exited": 9196,
+        "pass": true
+      },
+      "0.5": {
+        "rows": [
+          {
+            "x_minus_xs": 25.0,
+            "sigma_y_ref": 9.9498743710662,
+            "sigma_z_ref": 6.041522986797286,
+            "sigma_y_sim": 10.285602649506497,
+            "sigma_y_analytic_grid": 9.949874352088987,
+            "err_sigma_y": 0.033741963520074414,
+            "sigma_z_sim": 6.195717596319757,
+            "sigma_z_analytic_grid": 6.041540236789897,
+            "err_sigma_z": 0.025519545262812082,
+            "centerline_sim": 0.0013199480246920657,
+            "centerline_analytic": 0.0013238113687752309,
+            "err_centerline": -0.0029183493768749624,
+            "flux": 1.0015346454278735,
+            "err_flux": 0.0015346454278735155,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 50.0,
+            "sigma_y_ref": 13.92838827718412,
+            "sigma_z_ref": 8.306623862918075,
+            "sigma_y_sim": 14.115225836399851,
+            "sigma_y_analytic_grid": 13.927823175072508,
+            "err_sigma_y": 0.013455272871553348,
+            "sigma_z_sim": 8.408965898866825,
+            "sigma_z_analytic_grid": 8.307961184740691,
+            "err_sigma_z": 0.012157581370463078,
+            "centerline_sim": 0.0006867089867349327,
+            "centerline_analytic": 0.0006878040450814514,
+            "err_centerline": -0.0015921080347659489,
+            "flux": 0.9974574635938852,
+            "err_flux": -0.0025425364061147926,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 100.0,
+            "sigma_y_ref": 19.595917942265423,
+            "sigma_z_ref": 11.575836902790225,
+            "sigma_y_sim": 19.60926135012698,
+            "sigma_y_analytic_grid": 19.481304619658495,
+            "err_sigma_y": 0.006568180774678023,
+            "sigma_z_sim": 11.593910517606014,
+            "sigma_z_analytic_grid": 11.52577397013744,
+            "err_sigma_z": 0.005911667853726099,
+            "centerline_sim": 0.0003504372909244719,
+            "centerline_analytic": 0.0003508106435834713,
+            "err_centerline": -0.0010642569312768746,
+            "flux": 0.9991408600753403,
+            "err_flux": -0.0008591399246596909,
+            "pass": true
+          }
+        ],
+        "n_overwritten": 0,
+        "n_emitted": 9750,
+        "n_exited": 9188,
+        "pass": true
+      },
+      "1.0": {
+        "rows": [
+          {
+            "x_minus_xs": 25.0,
+            "sigma_y_ref": 9.9498743710662,
+            "sigma_z_ref": 6.041522986797286,
+            "sigma_y_sim": 10.226622700113206,
+            "sigma_y_analytic_grid": 9.949874352088987,
+            "err_sigma_y": 0.027814255560535406,
+            "sigma_z_sim": 6.197554315172909,
+            "sigma_z_analytic_grid": 6.041540236789897,
+            "err_sigma_z": 0.025823560262491663,
+            "centerline_sim": 0.0013255190598364505,
+            "centerline_analytic": 0.0013238113687752309,
+            "err_centerline": 0.0012899806584978357,
+            "flux": 0.9998127558823554,
+            "err_flux": -0.0001872441176445916,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 50.0,
+            "sigma_y_ref": 13.92838827718412,
+            "sigma_z_ref": 8.306623862918075,
+            "sigma_y_sim": 14.123464116504227,
+            "sigma_y_analytic_grid": 13.927823175072508,
+            "err_sigma_y": 0.014046770911183781,
+            "sigma_z_sim": 8.421427218778017,
+            "sigma_z_analytic_grid": 8.307961184740691,
+            "err_sigma_z": 0.013657506518654827,
+            "centerline_sim": 0.0006879893407555453,
+            "centerline_analytic": 0.0006878040450814514,
+            "err_centerline": 0.0002694018382400909,
+            "flux": 0.9999398047221352,
+            "err_flux": -6.019527786482737e-05,
+            "pass": true
+          },
+          {
+            "x_minus_xs": 100.0,
+            "sigma_y_ref": 19.595917942265423,
+            "sigma_z_ref": 11.575836902790225,
+            "sigma_y_sim": 19.594504331966345,
+            "sigma_y_analytic_grid": 19.481304619658495,
+            "err_sigma_y": 0.005810684372422381,
+            "sigma_z_sim": 11.593392692079735,
+            "sigma_z_analytic_grid": 11.52577397013744,
+            "err_sigma_z": 0.005866740239526713,
+            "centerline_sim": 0.0003508146237678981,
+            "centerline_analytic": 0.0003508106435834713,
+            "err_centerline": 1.1345677503271645e-05,
+            "flux": 0.9999000160185475,
+            "err_flux": -9.998398145250054e-05,
+            "pass": true
+          }
+        ],
+        "n_overwritten": 0,
+        "n_emitted": 9750,
+        "n_exited": 9185,
+        "pass": true
+      }
+    },
+    "pass": true
+  },
+  "V2": {
+    "mass_ratio_free_z60": 0.9998695063644231,
+    "mass_ratio_ground_z2": 0.9998912190020246,
+    "pass": true,
+    "criterion": "\u222bC dV within 1% of m (\u03c3=3 m, 0.5 m grid, \u00b16\u03c3; z\u22650 for the ground case)",
+    "note": "n_overwritten == 0 is asserted in V1 and V3"
+  },
+  "_meta": {
+    "device": "NVIDIA GeForce RTX 4090",
+    "warp": "1.11.1",
+    "last_run": "2026-10-12 14:28:28",
+    "last_run_tests": [
+      "V0",
+      "V3"
+    ],
+    "last_run_wall_s": 23.3
+  },
+  "V3": {
+    "setup": {
+      "source": [
+        20.0,
+        64.0,
+        10.0
+      ],
+      "U": 3.0,
+      "class": "D",
+      "spin_s": 150.0,
+      "avg_s": 600.0,
+      "sim_kwargs": {},
+      "f_rel": 0.5,
+      "K": [
+        1.5,
+        3.8,
+        1.3
+      ],
+      "turb_ou_sigma": 1.2,
+      "wind_ou_sigma": [
+        0.15,
+        0.15,
+        0.05
+      ],
+      "turb_layer_sigmas": [
+        0.2,
+        0.15,
+        0.1
+      ]
+    },
+    "rows": [
+      {
+        "x_minus_xs": 25.0,
+        "sigma_y_sim": 14.939456224186392,
+        "sigma_z_sim": 7.445359231747527,
+        "sigma_y_moment": 16.296467693403503,
+        "plume_center_y": 60.15168480921923,
+        "sigma_y_briggs": 1.9975046777556893,
+        "sigma_z_briggs": 1.472642081021448,
+        "ratio_y": 7.4790594437915034,
+        "ratio_z": 5.055783294324516
+      },
+      {
+        "x_minus_xs": 50.0,
+        "sigma_y_sim": 23.14079819852133,
+        "sigma_z_sim": 11.356524124109356,
+        "sigma_y_moment": 22.991717340472178,
+        "plume_center_y": 58.304328069199315,
+        "sigma_y_briggs": 3.9900373444305317,
+        "sigma_z_briggs": 2.893456933022473,
+        "ratio_y": 5.7996445148119395,
+        "ratio_z": 3.9248982746207517
+      },
+      {
+        "x_minus_xs": 100.0,
+        "sigma_y_sim": 33.45505331013267,
+        "sigma_z_sim": 17.26353309707782,
+        "sigma_y_moment": 28.827490214889686,
+        "plume_center_y": 55.04263776028776,
+        "sigma_y_briggs": 7.960297521679914,
+        "sigma_z_briggs": 5.595028849441882,
+        "ratio_y": 4.2027390583100255,
+        "ratio_z": 3.0855127938794986
+      },
+      {
+        "x_minus_xs": 150.0,
+        "sigma_y_sim": 38.36805897368574,
+        "sigma_z_sim": 21.177149650128133,
+        "sigma_y_moment": 30.417468458771665,
+        "plume_center_y": 50.894040300785356,
+        "sigma_y_briggs": 11.911000007651163,
+        "sigma_z_briggs": 8.13157112614726,
+        "ratio_y": 3.2212290277088065,
+        "ratio_z": 2.604312170624998
+      },
+      {
+        "x_minus_xs": 200.0,
+        "sigma_y_sim": 40.1736519371454,
+        "sigma_z_sim": 24.232590036006304,
+        "sigma_y_moment": 31.024348347122825,
+        "plume_center_y": 53.07370261382192,
+        "sigma_y_briggs": 15.842360687626789,
+        "sigma_z_briggs": 10.52469623168435,
+        "ratio_y": 2.5358374758202453,
+        "ratio_z": 2.3024503037963853
+      }
+    ],
+    "n_overwritten": 0,
+    "n_emitted": 3750,
+    "pass": false,
+    "criterion": "sim/Briggs-D ratio of \u03c3_y and \u03c3_z within [0.67, 1.5] for 50\u2013200 m; n_overwritten == 0",
+    "note": "\u03c3_y: Gaussian fit to C(y, z=h); \u03c3_z: ground-reflected Gaussian fit (h fixed) at the fitted plume centre. Constant-K puffs grow as \u221ax while Briggs is ~linear at short range. max_puffs=4096 (1024 overwrote 838 puffs: slow near-ground puffs live > 205 s). Shear is normalised by the 128 m domain height, so U=3 m/s gives \u22481.6 m/s at z=10 m.",
+    "tuning_sweep": {
+      "distances_m": [
+        25.0,
+        50.0,
+        100.0,
+        150.0,
+        200.0
+      ],
+      "spin_s": 150,
+      "avg_s": 600,
+      "max_puffs": 2048,
+      "rows": [
+        {
+          "turb_scale": 1.0,
+          "K": [
+            1.5,
+            3.8,
+            1.3
+          ],
+          "K_source": "table",
+          "f_rel": 0.5,
+          "ratio_y": [
+            7.471,
+            5.819,
+            4.145,
+            3.151,
+            2.522
+          ],
+          "ratio_z": [
+            5.053,
+            3.887,
+            3.087,
+            2.584,
+            2.259
+          ],
+          "n_overwritten": 3,
+          "pass": false
+        },
+        {
+          "turb_scale": 1.0,
+          "K": [
+            0.56,
+            1.88,
+            0.83
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            5.851,
+            4.588,
+            3.6,
+            2.732,
+            2.254
+          ],
+          "ratio_z": [
+            4.38,
+            3.014,
+            2.574,
+            2.158,
+            1.873
+          ],
+          "n_overwritten": 6,
+          "pass": false
+        },
+        {
+          "turb_scale": 1.0,
+          "K": [
+            0.27,
+            0.9,
+            0.4
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            4.855,
+            3.704,
+            3.114,
+            2.469,
+            2.025
+          ],
+          "ratio_z": [
+            3.37,
+            2.381,
+            1.796,
+            1.756,
+            1.343
+          ],
+          "n_overwritten": 6,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.5,
+          "K": [
+            1.5,
+            3.8,
+            1.3
+          ],
+          "K_source": "table",
+          "f_rel": 0.5,
+          "ratio_y": [
+            6.449,
+            4.792,
+            3.436,
+            2.701,
+            2.226
+          ],
+          "ratio_z": [
+            4.896,
+            3.3,
+            2.651,
+            2.23,
+            2.011
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.5,
+          "K": [
+            0.56,
+            1.88,
+            0.83
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            4.711,
+            3.503,
+            2.633,
+            2.087,
+            1.737
+          ],
+          "ratio_z": [
+            4.178,
+            2.762,
+            2.009,
+            1.773,
+            1.649
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.5,
+          "K": [
+            0.27,
+            0.9,
+            0.4
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            3.563,
+            2.603,
+            2.072,
+            1.617,
+            1.343
+          ],
+          "ratio_z": [
+            3.103,
+            2.125,
+            1.472,
+            1.2,
+            1.132
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.25,
+          "K": [
+            1.5,
+            3.8,
+            1.3
+          ],
+          "K_source": "table",
+          "f_rel": 0.5,
+          "ratio_y": [
+            6.23,
+            4.541,
+            3.221,
+            2.536,
+            2.129
+          ],
+          "ratio_z": [
+            4.89,
+            3.22,
+            2.515,
+            2.152,
+            1.941
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.25,
+          "K": [
+            0.56,
+            1.88,
+            0.83
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            4.418,
+            3.214,
+            2.337,
+            1.876,
+            1.589
+          ],
+          "ratio_z": [
+            4.157,
+            2.737,
+            1.889,
+            1.677,
+            1.561
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.25,
+          "K": [
+            0.27,
+            0.9,
+            0.4
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            3.178,
+            2.265,
+            1.686,
+            1.36,
+            1.146
+          ],
+          "ratio_z": [
+            3.051,
+            2.092,
+            1.418,
+            1.114,
+            0.996
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.1,
+          "K": [
+            1.5,
+            3.8,
+            1.3
+          ],
+          "K_source": "table",
+          "f_rel": 0.5,
+          "ratio_y": [
+            6.248,
+            4.515,
+            3.176,
+            2.518,
+            2.12
+          ],
+          "ratio_z": [
+            4.936,
+            3.222,
+            2.494,
+            2.158,
+            1.934
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.1,
+          "K": [
+            0.56,
+            1.88,
+            0.83
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            4.388,
+            3.161,
+            2.258,
+            1.826,
+            1.563
+          ],
+          "ratio_z": [
+            4.203,
+            2.759,
+            1.867,
+            1.68,
+            1.554
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.1,
+          "K": [
+            0.27,
+            0.9,
+            0.4
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            3.097,
+            2.177,
+            1.562,
+            1.276,
+            1.095
+          ],
+          "ratio_z": [
+            3.073,
+            2.116,
+            1.407,
+            1.105,
+            0.981
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.1,
+          "K": [
+            0.15,
+            0.47,
+            0.2
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            2.35,
+            1.609,
+            1.138,
+            0.927,
+            0.789
+          ],
+          "ratio_z": [
+            2.332,
+            1.571,
+            1.093,
+            0.874,
+            0.74
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.25,
+          "K": [
+            0.15,
+            0.47,
+            0.2
+          ],
+          "K_source": "override",
+          "f_rel": 0.5,
+          "ratio_y": [
+            2.474,
+            1.734,
+            1.32,
+            1.044,
+            0.868
+          ],
+          "ratio_z": [
+            2.332,
+            1.572,
+            1.096,
+            0.888,
+            0.754
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        },
+        {
+          "turb_scale": 0.1,
+          "K": [
+            0.15,
+            0.47,
+            0.2
+          ],
+          "K_source": "override",
+          "f_rel": 1.0,
+          "ratio_y": [
+            2.364,
+            1.607,
+            1.133,
+            0.914,
+            0.782
+          ],
+          "ratio_z": [
+            2.311,
+            1.512,
+            1.044,
+            0.865,
+            0.767
+          ],
+          "n_overwritten": 0,
+          "pass": false
+        }
+      ]
+    },
+    "tuning_conclusion": "No setting of turb_scale \u2208 {1, 0.5, 0.25, 0.1}, K (table, Briggs-200 m derived, two smaller sets) or f_rel \u2208 {0.5, 1} puts both 50 m and 200 m inside [0.67, 1.5]: lowering K enough for 50 m (ratio 1.6 at K_y=0.47, K_z=0.2) pushes 200 m to 0.74-0.79 and falling. Constant-K puff growth (\u03c3\u00b2 = \u03c30\u00b2 + 2K\u00b7t) cannot follow Briggs' near-linear \u03c3(x) over 50-200 m. Defaults left unchanged; not forced (per plan)."
+  },
+  "V4": {
+    "sample_hz": 10,
+    "duration_s": 600.0,
+    "stats": [
+      {
+        "point": "centerline x\u2212xs=25 m",
+        "mean": 0.0011990745998967517,
+        "intermittency": 1.0,
+        "peak_to_mean_p99": 1.6491656022610257,
+        "cov": 0.3247495380920989
+      },
+      {
+        "point": "centerline x\u2212xs=50 m",
+        "mean": 0.0006621418803188135,
+        "intermittency": 1.0,
+        "peak_to_mean_p99": 1.6758844655433263,
+        "cov": 0.3507535192735494
+      },
+      {
+        "point": "centerline x\u2212xs=100 m",
+        "mean": 0.00032375931671776927,
+        "intermittency": 1.0,
+        "peak_to_mean_p99": 1.9587400020711412,
+        "cov": 0.2962434996185661
+      },
+      {
+        "point": "off-axis x\u2212xs=50 m, y\u2212ys=16 m",
+        "mean": 0.00042910154768439196,
+        "intermittency": 0.9635,
+        "peak_to_mean_p99": 2.357188601028245,
+        "cov": 0.5697287334610945
+      }
+    ],
+    "off_axis_dy": 16.0,
+    "sigma_y_50m_sim": 23.14079819852133,
+    "sanity_offaxis_more_intermittent": true,
+    "note": "intermittency factor = fraction of time C > 0.1\u00b7mean (lower = more intermittent)"
+  },
+  "V5": {
+    "same_seed_identical": true,
+    "diff_seed_max_abs": 6.343696732074027e-05,
+    "pass": true,
+    "setup": "V1 configuration, f_rel=0.5, 60 s spin-up + 60 s average (shortened from V1)"
+  },
+  "V6": {
+    "unit_test_pass": true,
+    "shadow_mean_C_los_off": 0.00035741168863786686,
+    "shadow_mean_C_los_on": 0.00019719665050871028,
+    "setup": "wind +x 2 m/s (turbulence on), source (40,64,10), wall centre (80,64,15) half-extents (3,16,15); slice z=10 m; 100 s spin-up, 180 s mean",
+    "pass": true
+  },
+  "V7": {
+    "device": "NVIDIA GeForce RTX 4090",
+    "n_puffs": 1024,
+    "n_obstacles": 4,
+    "frame_dt": 0.03333333333333333,
+    "rows": [
+      {
+        "use_los": false,
+        "n_query": 0,
+        "ms_per_step": 0.7156216766452417,
+        "steps_per_s": 1397.3864021110899,
+        "real_time_factor": 46.57954673703633
+      },
+      {
+        "use_los": false,
+        "n_query": 1,
+        "ms_per_step": 1.0098812533154464,
+        "steps_per_s": 990.2154304944208,
+        "real_time_factor": 33.00718101648069
+      },
+      {
+        "use_los": false,
+        "n_query": 1000,
+        "ms_per_step": 1.0934675850633842,
+        "steps_per_s": 914.5218510908431,
+        "real_time_factor": 30.484061703028104
+      },
+      {
+        "use_los": true,
+        "n_query": 0,
+        "ms_per_step": 0.7225683899984384,
+        "steps_per_s": 1383.9520436289238,
+        "real_time_factor": 46.13173478763079
+      },
+      {
+        "use_los": true,
+        "n_query": 1,
+        "ms_per_step": 1.1328014183285027,
+        "steps_per_s": 882.7672563082973,
+        "real_time_factor": 29.425575210276577
+      },
+      {
+        "use_los": true,
+        "n_query": 1000,
+        "ms_per_step": 1.492534288263414,
+        "steps_per_s": 670.0013580013059,
+        "real_time_factor": 22.33337860004353
+      }
+    ],
+    "note": "one sim step = one 1/30 s frame (wind solve, 25 SOR iterations, puff advection); query = query_concentration incl. host copy"
+  },
+  "V8": {
+    "sor_iters": 25,
+    "rows": [
+      {
+        "obstacles": false,
+        "residual_post": 0.008234907831582757,
+        "residual_pre": 0.018282529132233726
+      },
+      {
+        "obstacles": true,
+        "residual_post": 0.008670710172090266,
+        "residual_pre": 0.018512756667203374
+      }
+    ],
+    "note": "class D, U=1.5 m/s, 30-60 s. Residual does not drop with more iterations (0.0076 at 200): the floor is the collocated central-difference div/grad vs compact 7-point Laplacian mismatch, not SOR convergence."
+  }
+}

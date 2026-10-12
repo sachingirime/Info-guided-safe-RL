@@ -883,12 +883,14 @@ class WindVectorModel:
                  gust_interval=15.0, gust_duration=2.0,
                  gust_strength_range=(0.5, 1.5), vertical_component=0.1, # <-- Weakened gusts
                  shear_exponent=0.25, seed=42,
-                 enable_turbulence=True, enable_gusts=True, steady=False):
+                 enable_turbulence=True, enable_gusts=True, steady=False,
+                 turb_scale=1.0):
         """
         enable_turbulence : False zeroes the three OU turbulence layers.
         enable_gusts      : False disables the gust model.
         steady            : True removes all randomness (mean-wind OU, turbulence
                             layers, gusts): the wind is exactly the mean vector.
+        turb_scale        : multiplies the mean-wind OU σ and the turbulence-layer σs.
         """
         self.center_rad = math.radians(center_angle)
         # Mean wind vector from direction and speed
@@ -908,7 +910,7 @@ class WindVectorModel:
         # OU parameters per component: [u, v, w]
         # Tighter reversion and lower noise for a stable plume
         self._kappa = np.array([ou_theta, ou_theta, 0.05])
-        self._sigma = np.array([ou_sigma, ou_sigma, 0.05])
+        self._sigma = np.array([ou_sigma, ou_sigma, 0.05]) * turb_scale
         if self.steady:
             self._sigma = np.zeros(3)
 
@@ -919,7 +921,7 @@ class WindVectorModel:
 
         # Multi-scale turbulence: scaled down to avoid tearing the plume apart
         self._turb_kappas = [0.05, 0.15, 0.40]
-        self._turb_sigmas = [0.20, 0.15, 0.10] # <-- Was 0.80, 0.50, 0.30
+        self._turb_sigmas = [0.20 * turb_scale, 0.15 * turb_scale, 0.10 * turb_scale] # <-- Was 0.80, 0.50, 0.30
         if not self.enable_turbulence:
             self._turb_sigmas = [0.0, 0.0, 0.0]
         self._turb_states = np.zeros((3, 3))  
@@ -1055,7 +1057,8 @@ class HybridFluidPuffSimulation:
                  steady_wind=False,
                  shear_exponent=None,
                  use_los=True,
-                 legacy_emission=False):
+                 legacy_emission=False,
+                 turb_scale=1.0):
         """
         seed              : puff RNG seed (defaults to wind_seed).
         use_grid_gas      : legacy Eulerian gas field + source momentum jet.
@@ -1072,6 +1075,8 @@ class HybridFluidPuffSimulation:
         shear_exponent    : overrides the PG shear exponent (V1 uses 0).
         use_los           : line-of-sight occlusion of puffs by obstacles.
         legacy_emission   : pre-fix emission (two puffs per interval). Legacy only.
+        turb_scale        : multiplies every stochastic wind amplitude (coarse OU
+                            field σ, OU turbulence layers, mean-wind OU σ).
         """
         self.seed = int(wind_seed if seed is None else seed)
         self.use_grid_gas = bool(use_grid_gas)
@@ -1094,6 +1099,7 @@ class HybridFluidPuffSimulation:
         self.shear_exponent_override = None if shear_exponent is None else float(shear_exponent)
         self.use_los = bool(use_los)
         self.legacy_emission = bool(legacy_emission)
+        self.turb_scale = float(turb_scale)
         self.wind_angle_range = wind_angle_range
         self.wind_base_speed = wind_base_speed
 
@@ -1141,7 +1147,7 @@ class HybridFluidPuffSimulation:
         # (Gardiner 2009, §4.5) — eliminates zero-turbulence cold start.
         self._turb_shape = (_TURB_NX, _TURB_NY, _TURB_NZ)
         self._turb_ou_theta = 0.1
-        self._turb_ou_sigma = 1.2 if self.enable_turbulence else 0.0
+        self._turb_ou_sigma = 1.2 * self.turb_scale if self.enable_turbulence else 0.0
         _turb_stat_std = self._turb_ou_sigma / math.sqrt(2.0 * self._turb_ou_theta)
         self._turb_np = (_turb_stat_std * self._rng.standard_normal(
             (*self._turb_shape, 3))).astype(np.float32)
@@ -1179,6 +1185,7 @@ class HybridFluidPuffSimulation:
             enable_turbulence=self.enable_turbulence,
             enable_gusts=self.enable_gusts,
             steady=self.steady_wind,
+            turb_scale=self.turb_scale,
         )
         if self.shear_exponent_override is not None:
             wm.shear_exponent = self.shear_exponent_override
