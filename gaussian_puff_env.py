@@ -352,20 +352,18 @@ class GaussianPuffEnv(gym.Env):
         u_np = self.fluid_sim.u0.numpy()
         dx   = self.fluid_sim.dx
 
-        gx = world_pos[0] / dx
-        gy = world_pos[1] / dx
-        gz = world_pos[2] / dx
-
         nx, ny, nz = u_np.shape[:3]
 
-        lx = int(np.floor(gx))
-        ly = int(np.floor(gy))
-        lz = int(np.floor(gz))
-        tx = gx - lx; ty = gy - ly; tz = gz - lz
+        # Cell (i,j,k) holds the value at its centre: grid coord = p/dx - 0.5,
+        # clamped to the grid before splitting into cell + fraction.
+        gx = float(np.clip(world_pos[0] / dx - 0.5, 0.0, nx - 1))
+        gy = float(np.clip(world_pos[1] / dx - 0.5, 0.0, ny - 1))
+        gz = float(np.clip(world_pos[2] / dx - 0.5, 0.0, nz - 1))
 
-        lx = np.clip(lx, 0, nx - 2)
-        ly = np.clip(ly, 0, ny - 2)
-        lz = np.clip(lz, 0, nz - 2)
+        lx = min(int(np.floor(gx)), nx - 2)
+        ly = min(int(np.floor(gy)), ny - 2)
+        lz = min(int(np.floor(gz)), nz - 2)
+        tx = gx - lx; ty = gy - ly; tz = gz - lz
 
         c000 = u_np[lx,   ly,   lz]
         c100 = u_np[lx+1, ly,   lz]

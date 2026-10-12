@@ -224,11 +224,23 @@ def enforce_density_obstacle(
 
 # ── Velocity + scalar interpolation ──────────────────────────────────────────
 
+# Grid convention: cell (i, j, k) stores the value at its centre
+# ((i+0.5)·dx, (j+0.5)·dx, (k+0.5)·dx), matching the obstacle mask and the
+# shear profile. World position p maps to grid coordinate p/dx - 0.5
+# (world_to_grid). Samplers clamp the coordinate to [0, N-1] *before*
+# splitting into cell + fraction, so points outside the grid take the edge
+# value (clamp-to-edge). Pre-fix code sampled at p/dx (a 2 m shift) and
+# clamped the cell index after computing the fraction.
+
+@wp.func
+def world_to_grid(p: wp.vec3, dx: float):
+    return wp.vec3(p[0]/dx - 0.5, p[1]/dx - 0.5, p[2]/dx - 0.5)
+
 @wp.func
 def sample_vel_3d(u: wp.array3d(dtype=wp.vec3), x: float, y: float, z: float):
-    lx=int(wp.floor(x)); ly=int(wp.floor(y)); lz=int(wp.floor(z))
+    x=wp.clamp(x,0.0,float(WIND_NX-1)); y=wp.clamp(y,0.0,float(WIND_NY-1)); z=wp.clamp(z,0.0,float(WIND_NZ-1))
+    lx=wp.min(int(wp.floor(x)),WIND_NX-2); ly=wp.min(int(wp.floor(y)),WIND_NY-2); lz=wp.min(int(wp.floor(z)),WIND_NZ-2)
     tx=x-float(lx); ty=y-float(ly); tz=z-float(lz)
-    lx=wp.clamp(lx,0,WIND_NX-2); ly=wp.clamp(ly,0,WIND_NY-2); lz=wp.clamp(lz,0,WIND_NZ-2)
     c000=u[lx,ly,lz];     c100=u[lx+1,ly,lz]
     c010=u[lx,ly+1,lz];   c110=u[lx+1,ly+1,lz]
     c001=u[lx,ly,lz+1];   c101=u[lx+1,ly,lz+1]
@@ -245,9 +257,9 @@ def lookup_rho_3d(rho: wp.array3d(dtype=float), x: int, y: int, z: int):
 
 @wp.func
 def sample_rho_3d(rho: wp.array3d(dtype=float), x: float, y: float, z: float):
-    lx=int(wp.floor(x)); ly=int(wp.floor(y)); lz=int(wp.floor(z))
+    x=wp.clamp(x,0.0,float(WIND_NX-1)); y=wp.clamp(y,0.0,float(WIND_NY-1)); z=wp.clamp(z,0.0,float(WIND_NZ-1))
+    lx=wp.min(int(wp.floor(x)),WIND_NX-2); ly=wp.min(int(wp.floor(y)),WIND_NY-2); lz=wp.min(int(wp.floor(z)),WIND_NZ-2)
     tx=x-float(lx); ty=y-float(ly); tz=z-float(lz)
-    lx=wp.clamp(lx,0,WIND_NX-2); ly=wp.clamp(ly,0,WIND_NY-2); lz=wp.clamp(lz,0,WIND_NZ-2)
     c000=lookup_rho_3d(rho,lx,ly,lz);     c100=lookup_rho_3d(rho,lx+1,ly,lz)
     c010=lookup_rho_3d(rho,lx,ly+1,lz);   c110=lookup_rho_3d(rho,lx+1,ly+1,lz)
     c001=lookup_rho_3d(rho,lx,ly,lz+1);   c101=lookup_rho_3d(rho,lx+1,ly,lz+1)
@@ -513,10 +525,10 @@ def pressure_apply_3d(
 
 @wp.func
 def sample_turb_3d(turb: wp.array3d(dtype=wp.vec3), x: float, y: float, z: float):
-    """Trilinear interpolation on the coarse turbulence grid."""
-    lx = int(wp.floor(x)); ly = int(wp.floor(y)); lz = int(wp.floor(z))
+    """Trilinear interpolation on the coarse turbulence grid (clamp-to-edge)."""
+    x = wp.clamp(x, 0.0, float(TURB_NX - 1)); y = wp.clamp(y, 0.0, float(TURB_NY - 1)); z = wp.clamp(z, 0.0, float(TURB_NZ - 1))
+    lx = wp.min(int(wp.floor(x)), TURB_NX - 2); ly = wp.min(int(wp.floor(y)), TURB_NY - 2); lz = wp.min(int(wp.floor(z)), TURB_NZ - 2)
     tx = x - float(lx); ty = y - float(ly); tz = z - float(lz)
-    lx = wp.clamp(lx, 0, TURB_NX - 2); ly = wp.clamp(ly, 0, TURB_NY - 2); lz = wp.clamp(lz, 0, TURB_NZ - 2)
     c000 = turb[lx, ly, lz];       c100 = turb[lx+1, ly, lz]
     c010 = turb[lx, ly+1, lz];     c110 = turb[lx+1, ly+1, lz]
     c001 = turb[lx, ly, lz+1];     c101 = turb[lx+1, ly, lz+1]
@@ -604,7 +616,7 @@ def advect_puffs_rk2(
 ):
     i=wp.tid()
     if puff_active[i]==0: return
-    pos=puff_pos[i]; gx=pos[0]/dx; gy=pos[1]/dx; gz=pos[2]/dx
+    pos=puff_pos[i]; g=world_to_grid(pos,dx); gx=g[0]; gy=g[1]; gz=g[2]
     age=current_time-puff_emit_time[i]
     if age<0.0: age=0.0
     # Briggs (1975) dilution-limited buoyancy: a_eff = a_b · (σ₀/σ)³
@@ -620,8 +632,8 @@ def advect_puffs_rk2(
     # RK2 advection
     vel1=sample_vel_3d(wind_field,gx,gy,gz)
     vel1=wp.vec3(vel1[0],vel1[1],vel1[2]+buoy); k1=vel1*dt
-    mid_gx=(pos[0]+0.5*k1[0])/dx; mid_gy=(pos[1]+0.5*k1[1])/dx; mid_gz=(pos[2]+0.5*k1[2])/dx
-    vel2=sample_vel_3d(wind_field,mid_gx,mid_gy,mid_gz)
+    gm=world_to_grid(pos+0.5*k1,dx)
+    vel2=sample_vel_3d(wind_field,gm[0],gm[1],gm[2])
     vel2=wp.vec3(vel2[0],vel2[1],vel2[2]+buoy)
     new_pos=pos+vel2*dt
 
@@ -664,8 +676,8 @@ def query_sensor_hybrid(
     num_puffs:int, concentration: wp.array(dtype=float),
 ):
     s=wp.tid(); p=sensor_pos[s]
-    gx=p[0]/dx; gy=p[1]/dx; gz=p[2]/dx
-    c_grid=sample_rho_3d(rho_grid,gx,gy,gz)*rho_scale
+    g=world_to_grid(p,dx)
+    c_grid=sample_rho_3d(rho_grid,g[0],g[1],g[2])*rho_scale
     c_puff=float(0.0)
     for i in range(num_puffs):
         if puff_active[i]==0: continue
@@ -1151,6 +1163,12 @@ class HybridFluidPuffSimulation:
         wp.launch(enforce_velocity_obstacle, dim=shape,
                   inputs=[self.u0, self.obstacle_mask])
 
+        # Legacy Eulerian gas field: buoyancy on the wind, grid diffusion and the
+        # source momentum jet (emit_density_fixed adds (0,0,2)*w*0.5 m/s to the
+        # wind every substep). Off by default: the sensor reads puffs only.
+        if not self.use_grid_gas:
+            return
+
         wp.launch(integrate_rho,dim=shape,
                   inputs=[self.u0,self.rho0,dt,
                           float(METHANE_BUOYANCY_ACCEL),self.RHO_DECAY_RATE,
@@ -1166,9 +1184,9 @@ class HybridFluidPuffSimulation:
         wp.launch(enforce_density_obstacle, dim=shape,
                   inputs=[self.rho0, self.obstacle_mask])
 
-        src_gx=float(self.source_pos[0]/self.dx)
-        src_gy=float(self.source_pos[1]/self.dx)
-        src_gz=float(self.source_pos[2]/self.dx)
+        src_gx=float(self.source_pos[0]/self.dx-0.5)
+        src_gy=float(self.source_pos[1]/self.dx-0.5)
+        src_gz=float(self.source_pos[2]/self.dx-0.5)
         emit_strength=float(self.Q*dt*0.08)
         inject_dir=self._fixed_inject_dir()
         wp.launch(emit_density_fixed, dim=shape,
@@ -1191,10 +1209,14 @@ class HybridFluidPuffSimulation:
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2])
         ])
 
+    def _rho_scale(self):
+        """Grid-gas contribution to sensed concentration (0 unless legacy mode)."""
+        return float(self.RHO_SCALE) if self.use_grid_gas else 0.0
+
     def compute_conc_grid(self):
         n=min(self.next_puff_idx,self.max_puffs); Q_dt=self.Q*self.emit_interval
         wp.launch(compute_concentration_grid_kernel,dim=self.wind_shape,inputs=[
-            self.conc_grid,self.rho0,float(self.RHO_SCALE),
+            self.conc_grid,self.rho0,self._rho_scale(),
             self.puff_pos,self.puff_active,self.puff_emit_time,
             self.sim_time,Q_dt,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,self.dx,n
         ])
@@ -1203,7 +1225,7 @@ class HybridFluidPuffSimulation:
         M=sensor_positions_np.shape[0]; sensors=wp.array(sensor_positions_np,dtype=wp.vec3)
         conc=wp.zeros(M,dtype=float); n=min(self.next_puff_idx,self.max_puffs); Q_dt=self.Q*self.emit_interval
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
-            sensors,self.rho0,float(self.RHO_SCALE),self.dx,
+            sensors,self.rho0,self._rho_scale(),self.dx,
             self.puff_pos,self.puff_active,self.puff_emit_time,
             self.sim_time,Q_dt,self.sigma_0,self.K_D_X,self.K_D_Y,self.K_D_Z,n,conc
         ])

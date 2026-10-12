@@ -6,7 +6,7 @@ obstacles) and reports:
 
   grid_share          sum(c_grid) / sum(c_grid + c_puff) over grid cells with
                       z in [4, 60] m and total C > 3e-4 kg/m^3
-  w_max_source        peak vertical wind (m/s) in cells within 10 m of source
+  w_max_source        peak |vertical wind| (m/s, signed) in cells within 10 m of source
                       (final snapshot; w_max_source_tmax = max over the run)
   median_puff_height  median z of active puffs (m), with source_z
   n_active_puffs
@@ -65,7 +65,8 @@ def _w_near_source(sim, radius=10.0):
     ii, jj, kk = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij")
     centers = np.stack([(ii + 0.5) * dx, (jj + 0.5) * dx, (kk + 0.5) * dx], axis=-1)
     near = np.linalg.norm(centers - np.asarray(sim.source_pos), axis=-1) <= radius
-    return float(u[..., 2][near].max())
+    w = u[..., 2][near]
+    return float(w[np.argmax(np.abs(w))])  # signed value of peak |w|
 
 
 def diagnose(sim, duration=120.0, z_band=(4.0, 60.0), c_thresh=3e-4):
@@ -74,7 +75,7 @@ def diagnose(sim, duration=120.0, z_band=(4.0, 60.0), c_thresh=3e-4):
     for i in range(n_steps):
         sim.step()
         if i % 30 == 0:
-            w_tmax = max(w_tmax, _w_near_source(sim))
+            w_tmax = max(w_tmax, abs(_w_near_source(sim)))
     wp.synchronize()
 
     # Grid share on the concentration grid
