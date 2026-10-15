@@ -49,8 +49,8 @@ import numpy as np
 # (First fit used σ₀ = 2 m, K_rel = 0.2: class D failed at 25 m because
 # σ₀ > Briggs D σ_z(25 m) = 1.47 m; see validation/results.json.)
 #
-# Release correlation (Gifford 1959 meandering plume; cf. GADEN/Farrell, where
-# all filaments share one time-varying wind): the velocity of each new puff is
+# Shared eddies (meandering-plume model: Gifford 1959; Anfossi et al. 2006 for
+# the time-scale ratio): the velocity of each new puff is
 # σ·ζ with ζ an OU process in release time, corr(ζ_n, ζ_{n−1}) = e^{−τ_e/T_E}.
 # Successive releases sample the velocity at a *fixed point* (the source), so
 # the correlation time is the Eulerian scale T_E = T_L/β with the Hay–Pasquill
@@ -59,7 +59,10 @@ import numpy as np
 # literature value varies with regime; not tuned here).
 # Consecutive puffs ride the same large eddy, so the instantaneous plume
 # meanders coherently; each puff's own velocity is still N(0, σ²) and OU in
-# time, so the mean plume (V1/V3) is unchanged.
+# time, so the mean plume (V1/V3) is unchanged.  This is not GADEN's
+# approach: GADEN's per-filament noise is independent and coherence between
+# filaments comes only from its time-varying CFD wind.  shared_eddies=False
+# gives independent release velocities (GADEN-equivalent puff noise).
 # Puff growth σ_puff² = σ₀² + 2·K_rel·age represents relative dispersion only
 # (Farrell et al. 2002; GADEN, Monroy et al. 2017).
 LSM_U_FIT = 3.0          # m/s, reference wind of the T_L fit
@@ -777,7 +780,7 @@ def emit_puff_kernel(
     puff_active[idx] = 1
     puff_emit_time[idx] = emit_time
     puff_mass[idx] = mass
-    # Turbulent velocity at release (host: σ·ζ, ζ ~ N(0,1), release-correlated)
+    # Turbulent velocity at release (host: σ·ζ, ζ ~ N(0,1), shared eddies)
     puff_vel[idx] = vel
 
 BUOY_NONE = wp.constant(0)
@@ -1144,7 +1147,7 @@ class HybridFluidPuffSimulation:
                  turb_scale=None,
                  wind_preset="calibrated",
                  stability_class="D",
-                 release_correlation=True,
+                 shared_eddies=True,
                  hp_gamma=HP_GAMMA):
         """
         seed              : puff RNG seed (defaults to wind_seed).
@@ -1169,7 +1172,7 @@ class HybridFluidPuffSimulation:
         wind_preset       : "calibrated" (default, turb_scale 0.1) or "meandering"
                             (turb_scale 1.0, pre-LSM amplitudes; harder RL).
         stability_class   : PG class A–F (LSM intensities, T_L, shear, lapse rate).
-        release_correlation: correlate successive puffs' release velocities
+        shared_eddies     : correlate successive puffs' release velocities
                             (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
@@ -1179,7 +1182,7 @@ class HybridFluidPuffSimulation:
         self.k_rel = float(K_rel)
         if self.k_rel < 0.0:
             raise ValueError("K_rel must be >= 0")
-        self.release_correlation = bool(release_correlation)
+        self.shared_eddies = bool(shared_eddies)
         self.hp_gamma = float(hp_gamma)
         self._release_rng = np.random.default_rng([self.seed, 7])
         self._release_zeta = None
@@ -1484,11 +1487,11 @@ class HybridFluidPuffSimulation:
     def _release_velocity(self):
         """Turbulent velocity of a new puff: σ·ζ, ζ ~ N(0, 1) per axis.
 
-        With release_correlation, ζ is an OU process in release time:
+        With shared_eddies, ζ is an OU process in release time:
         ζ_n = ρ ζ_{n−1} + √(1 − ρ²) ξ,  ρ = e^{−τ_e/T_E} (per axis).
         """
         xi = self._release_rng.standard_normal(3)
-        if not self.release_correlation or self._release_zeta is None:
+        if not self.shared_eddies or self._release_zeta is None:
             self._release_zeta = xi
         else:
             rho = np.exp(-self.emit_interval / np.array(self.lsm_TE))

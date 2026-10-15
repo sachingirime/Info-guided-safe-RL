@@ -67,7 +67,7 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 |---|---|---|
 | `seed` | `wind_seed` | Puff-noise RNG seed (the env derives one per episode from its RNG) |
 | `K_rel` | `0.05` | m²/s, relative puff growth σ² = σ₀² + 2·K_rel·age (σ₀ = `SIGMA_0` = 1 m) |
-| `release_correlation` | `True` | Successive puffs' turbulent velocities correlated over the Eulerian time scale T_E, so the plume meanders coherently |
+| `shared_eddies` | `True` | Meandering-plume model (Gifford 1959): successive puffs' release velocities correlated over the Eulerian time scale T_E, so the plume meanders coherently. `False` = independent puff noise (GADEN-equivalent) |
 | `hp_gamma` | `0.6` | γ in the Hay–Pasquill ratio T_L/T_E = γ/i |
 | `stability_class` | `"D"` | PG class A–F (set via the env's `stability_class`) |
 | `wind_preset` | `"calibrated"` | `"calibrated"` (small resolved fluctuations, ≲3° meander) or `"meandering"` (pre-LSM amplitudes, harder RL) |
@@ -108,7 +108,7 @@ Inviscid Stable Fluids on a 64x32x32 grid (4 m cells): semi-Lagrangian advection
 Lagrangian Gaussian puffs, one per `PUFF_PERIOD` with mass Q·`PUFF_PERIOD`:
 - RK2 advection on the trilinearly interpolated wind
 - Absolute dispersion: each puff carries a turbulent velocity v following an OU process (Thomson 1987) with σ_u = σ_v = a_y·U, σ_w = a_z·U from the Briggs near-field slopes and T_L fitted to Briggs σ(x) (`validation/fit_tl.py`); reflections flip v's normal component
-- Coherent meander: release velocities of successive puffs are correlated over T_E = T_L·i/γ (Hay–Pasquill), so the instantaneous plume meanders and is intermittent
+- Coherent meander (meandering-plume model, Gifford 1959): release velocities of successive puffs are correlated over T_E = T_L·i/γ (Hay–Pasquill form, Anfossi et al. 2006), so the instantaneous plume meanders and is intermittent
 - Relative dispersion: puff growth σ² = σ₀² + 2·K_rel·age
 - Ground reflection by the method of images; removal at the open domain faces
 - Obstacles: puffs pushed 2 m out of solids; line-of-sight occlusion from puff centre to the sample point

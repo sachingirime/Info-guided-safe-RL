@@ -29,7 +29,7 @@ Every behaviour change, with the old and new value. Validation numbers are in
 | U for intensities | — | Running mean (τ = 30 s) of the resolved wind at the source | Target profile is ~20% too fast at 10 m (ground drag) |
 | σ₀ (`SIGMA_0`) | 2.0 m | 1.0 m | σ₀ = 2 m > Briggs D σ_z(25 m) = 1.47 m |
 | Relative growth | f_rel·K (f_rel = 0.5 in the first fix) | `K_rel` = 0.05 m²/s | Relative dispersion only (Farrell/GADEN) |
-| Coherent meander | — (independent puffs: centreline intermittency γ = 1.0) | Release velocities correlated over T_E = T_L·i/γ, γ = 0.6 (Hay–Pasquill; `release_correlation`, `hp_gamma`) | Plume meanders as a ribbon; γ 0.71–0.83 |
+| Coherent meander | — (independent puffs: centreline intermittency γ = 1.0) | Shared eddies (meandering-plume model, Gifford 1959): release velocities correlated over T_E = T_L·i/γ, γ = 0.6 (Hay–Pasquill form, Anfossi et al. 2006; `shared_eddies`, `hp_gamma`). Not GADEN's mechanism: GADEN's filament noise is independent and its coherence comes from the CFD wind | Plume meanders as a ribbon; γ 0.71–0.83 |
 | Centroid noise RNG | Integer hash of (i, int(100t)), correlated axes | Warp `rand_init(seed, i)` per step; `seed` argument | Reproducibility |
 | Ground bounce | Position reflected | Position and v_w reflected | Well-mixed condition |
 | Obstacle bounce | Pushed 2 m out | Pushed 2 m out, normal component of v reflected | Consistency |
@@ -64,7 +64,7 @@ Consequence for RL: with the narrower plume, a random drone-zone point is above 
 
 ### Tooling
 
-- `test_env.py` rewritten: 9 tests (obs, determinism, no grid gas, emission count, RNG, LSM, release correlation, LOS, kernel mass).
+- `test_env.py` rewritten: 9 tests (obs, determinism, no grid gas, emission count, RNG, LSM, shared-eddy release, LOS, kernel mass).
 - `validation/`: `diag_state.py`, `validate_sim.py` (V0–V8), `fit_tl.py`, `make_before_figure.py`, `results.json`, figures.
 - `realtime_viz.py`: `--headless` paper figures, puff spheres sized by σ_puff, dead first copy removed.
 - `requirements.txt` pinned.

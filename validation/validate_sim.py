@@ -186,9 +186,9 @@ V1_KREL = (0.0, 0.05, 1.0)
 V1_CORR_SEEDS = (1, 2, 3, 4)
 
 
-def v1_field(k_rel, spin=150.0, avg=180.0, seed=1, release_correlation=False):
+def v1_field(k_rel, spin=150.0, avg=180.0, seed=1, shared_eddies=False):
     sim = make_sim(V1_SRC, V1_U, Q=1.0, emit=0.2, seed=seed, K_rel=k_rel, steady_wind=True,
-                   release_correlation=release_correlation,
+                   shared_eddies=shared_eddies,
                    shear_exponent=0.0, ground_drag_rate=0.0, buoyancy_mode="none")
     pts = [plane(V1_SRC[0] + d, V1_YS, V1_ZS) for d in V1_X]
     P = np.concatenate([p for p, _ in pts])
@@ -215,7 +215,7 @@ def v1(avg=180.0, avg_corr=7200.0):
                     "of ~13% at one centreline point in the pre-LSM f_rel=0 run). K_rel ∈ {0, 0.05, 1} "
                     "shows puff growth and LSM spread add without double counting; these runs use "
                     "independent release velocities (single-particle transport). One extra run with the "
-                    "default release correlation (K_rel=0.05) checks the mean plume is unchanged; it is "
+                    "default shared-eddy release (K_rel=0.05) checks the mean plume is unchanged; it is "
                     "averaged longer because the plume meanders on the T_L time scale. σ: second moments "
                     "of the sim and the analytic field on the same grid."),
            "runs": {}}
@@ -232,10 +232,10 @@ def v1(avg=180.0, avg_corr=7200.0):
         # ensemble mean over several seeds.
         fields = None
         for sd in seeds:
-            f_i, sim = v1_field(f_rel, avg=avg_i, release_correlation=corr, seed=sd)
+            f_i, sim = v1_field(f_rel, avg=avg_i, shared_eddies=corr, seed=sd)
             fields = f_i if fields is None else fields + f_i
         fields = fields / len(seeds)
-        tag = f"K_rel={f_rel:g}" + (f", release-correlated, {len(seeds)} seeds" if corr else "")
+        tag = f"K_rel={f_rel:g}" + (f", shared eddies, {len(seeds)} seeds" if corr else "")
         rows = []
         ok_f = sim.n_overwritten == 0
         for d, C in zip(V1_X, fields):
@@ -260,7 +260,7 @@ def v1(avg=180.0, avg_corr=7200.0):
             print(f"  V1 {tag:38s} x-xs={d:5.0f}: σy {sy_s:6.2f}/{sy_a:6.2f} ({100*r['err_sigma_y']:+.1f}%)  "
                   f"σz {sz_s:6.2f}/{sz_a:6.2f} ({100*r['err_sigma_z']:+.1f}%)  "
                   f"C_cl {100*r['err_centerline']:+.1f}%  flux {100*r['err_flux']:+.1f}%  {verdict(r['pass'])}")
-        out["runs"][tag] = {"avg_s": avg_i, "seeds": list(seeds), "release_correlation": corr, "rows": rows, "n_overwritten": sim.n_overwritten,
+        out["runs"][tag] = {"avg_s": avg_i, "seeds": list(seeds), "shared_eddies": corr, "rows": rows, "n_overwritten": sim.n_overwritten,
                                    "n_emitted": sim.n_emitted, "n_exited": sim.n_exited,
                                    "U_src": sim.U_src, "lsm_sigma": list(sim.lsm_sigma),
                                    "lsm_TL": list(sim.lsm_TL), "pass": bool(ok_f)}

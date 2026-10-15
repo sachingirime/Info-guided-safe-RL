@@ -148,7 +148,7 @@ def test_release_correlation():
     rho = np.array([np.corrcoef(v[1:, a], v[:-1, a])[0, 1] for a in range(3)])
     assert np.all(abs(ratio - 1) < 0.03), ratio
     assert np.all(abs(rho - rho_ref) < 0.01), (rho, rho_ref)
-    sim_ind = _make_sim(seed=4, release_correlation=False)
+    sim_ind = _make_sim(seed=4, shared_eddies=False)
     w = np.array([np.array(sim_ind._release_velocity(), float) for _ in range(n)])
     assert np.all(abs(w.var(0) / sig ** 2 - 1) < 0.03)
     assert np.all(np.abs([np.corrcoef(w[1:, a], w[:-1, a])[0, 1] for a in range(3)]) < 0.02)
