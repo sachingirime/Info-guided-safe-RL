@@ -80,7 +80,12 @@ def pytest_sessionfinish(session, exitstatus):
                              capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
     except Exception:
         smi = []
+    try:
+        from tests.helpers import RETRIES
+    except Exception:
+        RETRIES = []
     out = {"meta": {"date": time.strftime("%Y-%m-%d %H:%M:%S"), "wall_s": round(time.time() - _T0, 1),
+                    "job_retries": RETRIES,
                     "slow": bool(session.config.getoption("--slow")), "python": platform.python_version(),
                     "warp": wp.__version__, "numpy": np.__version__, "gpu": smi},
            "tests": [{"test": k, **v, "numbers": _NUMBERS.get(k, {})} for k, v in _RESULTS.items()]}

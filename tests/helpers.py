@@ -111,10 +111,17 @@ def conc_reference64(sensors, pos, mass, ages, sigma0, k_rel, spheres=(), cuboid
 
 # ── parallel runner for long jobs ────────────────────────────────────────────
 
+RETRIES = []   # (job, error tail) of jobs that crashed and were retried once
+
+
 def run_parallel(jobs, per_gpu=2, n_gpu=2):
     """jobs: list of (function_name, kwargs). Functions live in tests/jobs.py and
-    return JSON-serialisable results. Runs up to per_gpu·n_gpu at once."""
+    return JSON-serialisable results. Runs up to per_gpu·n_gpu at once.
+    A job that crashes is retried once (recorded in RETRIES): the 2026-10-15
+    fresh-clone run hit a transient TypeError inside Warp's own type check
+    (types.is_array) that did not reproduce alone or concurrently."""
     procs, results, queue = [], [None] * len(jobs), list(enumerate(jobs))
+    tried = set()
     slots = per_gpu * n_gpu
     running = []
     while queue or running:
@@ -127,6 +134,11 @@ def run_parallel(jobs, per_gpu=2, n_gpu=2):
         i, p = running.pop(0)
         out, err = p.communicate()
         if p.returncode != 0:
-            raise RuntimeError(f"job {jobs[i]} failed:\n{err[-3000:]}")
+            if i not in tried:
+                tried.add(i)
+                RETRIES.append({"job": [jobs[i][0], jobs[i][1]], "error": err[-600:]})
+                queue.insert(0, (i, jobs[i]))
+                continue
+            raise RuntimeError(f"job {jobs[i]} failed twice:\n{err[-3000:]}")
         results[i] = json.loads(out.strip().splitlines()[-1])
     return results
