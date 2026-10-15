@@ -1,10 +1,13 @@
 # Pre-merge test summary (branch `sim-fix`)
 
-Fresh clone of `sim-fix` at `57e2274`, NVIDIA RTX 4090 (driver 550.163.01), Warp 1.11.1, Python 3.10.20.
+NVIDIA RTX 4090 (driver 550.163.01), Warp 1.11.1, Python 3.10.20.
 
-- `./run_all_tests.sh --slow`: **94 passed, 2 failed** (29 min). Full results: `tests/report_fresh_clone.json`.
-- `validation/validate_sim.py`: **V0, V1, V2, V3, V5, V6 PASS** (validation/results.json).
-- B2.9 was strengthened after that run (commit `5354333`) and re-run in the clone: PASS.
+**Current status: 96/96 pass.**
+- Rerun after review (fresh clone of `7dfe34b`, WARMUP_S = 120 s, N_PUFFS = 2560, class ordering on 3-seed means): `./run_all_tests.sh --slow` → 95 passed, 1 failed (34 min).
+- The failure was a transient crash inside Warp (TypeError in its own type check, `warp._src.types.is_array`) in one of the ten class-D seed-spread jobs. It did not reproduce alone or with four concurrent jobs.
+- `run_parallel` now retries a crashed job once and records it in `report.json` (`meta.job_retries`). With that change the test passed in the fresh clone with 0 retries (`tests/report_fresh_clone_seed_spread_rerun.json`).
+- First run (before the follow-up): fresh clone of `57e2274`, 94 passed, 2 failed (B7.25 class ordering, B11.38 warm-up reach). Both are fixed; see below. Report: `tests/report_fresh_clone.json`.
+- `validation/validate_sim.py`: **V0, V1, V2, V3, V5, V6 PASS** (validation/results.json). The follow-up changed env constants only, which validation does not use.
 
 Nothing has been merged, tagged or pushed.
 
@@ -42,10 +45,10 @@ Nothing has been merged, tagged or pushed.
 | B5.19 Env DT vs frame_dt | PASS (after fix) | Drift ≤ 4e-10 s over 10,000 steps at 30/25/24 fps. Before the fix: −200 s at 25 fps. |
 | B6.20 Mass balance | PASS | Counts exact; mass within 6.6e-7 (767 exited, 66 overwritten). |
 | B6.21 Kernel mass | PASS | 0.99985–0.99990 for σ ∈ {0.3, 1, 5} m at heights {0.1σ, σ, 10σ}. |
-| B6.22 Buffer sizing, 1 h | PASS (warning) | 24 puffs (24 kg) overwritten with N_PUFFS = 2048. The warning names **N_PUFFS ≥ 2560**. |
+| B6.22 Buffer sizing, 1 h | PASS (warning) | N_PUFFS = 2048: 24 puffs (24 kg) overwritten. After the follow-up, **N_PUFFS = 2560: 1 puff** (1 kg of 18,750 kg emitted, 0.005%; oldest active puff 414 s). The warning now names ≥ 3200. |
 | B7.23 OU statistics | PASS | Variance within 0.8%; autocorrelation within 0.0055. |
 | B7.24 Well-mixed (Thomson) | PASS | χ² = 1000.7 on 1000 bins, p = 0.48. Boundary bins at 0.99 of the mean. |
-| B7.25 Class ordering | **FAIL** | σ_z (14.5 → 2.3 m) and intermittency (0.22 → 0.92) are ordered A→F. σ_y at 100 m: A 19.3 < B 20.1 m. |
+| B7.25 Class ordering | PASS (3-seed means) | σ_y at 100 m: 20.1 / 17.2 / 12.3 / 9.1 / 7.1 / 5.5 m (A→F). σ_z: 15.8 / 10.8 / 7.9 / 6.0 / 3.3 / 2.3 m. Intermittency: 0.26 / 0.35 / 0.50 / 0.68 / 0.80 / 0.90. Single runs failed at A < B (19.3 vs 20.1 m) because classes A/B scatter by 29% and 19% per run. |
 | B7.26 Seed spread, class D | PASS (report) | CoV σ_y 5.7–6.7%, σ_z 1.8–3.1%; 10/10 seeds pass V3. |
 | B8.27–28 No puffs inside, none stuck | PASS | 0 inside, 0 stuck, 0 steps crossing a solid (7 obstacles, 300 s). |
 | B8.29 Bounce velocity flip | PASS | Matches the expected reflection to 1e-5 (sphere and box face). |
@@ -57,23 +60,23 @@ Nothing has been merged, tagged or pushed.
 | B10.35 1 h stability | PASS | No NaN; KE trend 0.2% per 30 min; residual 0.0015–0.0021; puff-count CV 6%; steps/s 1361 → 1356. |
 | B11.36 Reset hygiene | PASS (after fix) | Bit-identical to a fresh env (puffs, shared eddies, anemometer, sensor lag, MLE, info map). |
 | B11.37 Determinism | PASS | 500 steps identical with the same seed; different seeds differ. |
-| B11.38 Spawn validity | PASS (after fix) / **FAIL** (warm-up) | 1000 resets: source ≥ 2.0 m and drone ≥ 5.0 m from obstacles, drone ≥ 30.2 m from source, 1000 distinct spawns. Obstacles placed before warm-up. **Plume reach after 60 s: < 100 m in 5/10 episodes.** |
+| B11.38 Spawn validity | PASS (after fixes) | 1000 resets: source ≥ 2.0 m and drone ≥ 5.0 m from obstacles, drone ≥ 30.2 m from source, 1000 distinct spawns. Obstacles placed before warm-up. Plume reach after the 120 s warm-up: ≥ 100 m (or the domain edge) in 10/10 episodes, 110–184 m. With 60 s it was 69–90 m in 5/10. |
 | B11.39 Observation ranges | PASS (report) | 100 episodes (155k steps), all finite and in [0, 1]. c_norm is 0 on 33.5% of steps and 1 on 0%; c_detected > 0.5 on 1.8%. |
 | B11.40 Sensor model | PASS | 63% response at 1.0 s; noise σ within 0.2%; bias applied once. Clipping bias at C = 0: +8e-6 kg/m³. |
 | B11.41 Anemometer | PASS | σ within 0.5%; ρ(τ) within 0.009 of e^{−1}; off = exact resolved wind. |
 | B11.42 Units | PASS | Round trip to 1e-12; 1 g/m³ CH₄ = 1499.7 ppm at 20 °C. |
 | B12.43 Input validation | PASS | 17 cases. |
-| B13.44 Performance | Baseline recorded | Env defaults 0.72 ms/step (46×). 2048 puffs + 1000 queries: 1.2 ms (LOS off), 1.8 ms (LOS on). |
+| B13.44 Performance | Baseline recorded | Env defaults 0.74 ms/step (45×). 2560 puffs + 1000 queries: 1.4 ms (LOS off), 2.1 ms (LOS on). |
 
 ## Failures and causes
 
-1. **B7.25 class ordering (σ_y, A vs B): sampling noise.**
-   - Classes A and B have long meander time scales (T_E ≈ 250 s for A), so a single 3600 s run has a σ_y CoV of about 29% (A) and 19% (B).
-   - With 3 seeds (`validation/b7_class_AB_extra_seeds.json`) the order is correct: A = 20.1 m, B = 17.2 m.
-   - The test is unchanged; making it pass needs a multi-seed ensemble for A and B.
-2. **B11.38 warm-up plume reach: WARMUP_S = 60 s is too short at the env wind (1.5 m/s).**
-   - The plume reached only 69–90 m in 5 of 10 episodes. The ideal is 90 m, and near-ground transport is slower than the 10 m wind.
-   - Proposal, **not applied**: WARMUP_S ≈ 120 s, or an adaptive warm-up of 1.3 × 100 m / U10. The cost is about 2 s per reset.
+All failures from the first run are resolved:
+
+1. **B7.25 class ordering:** sampling noise. Classes A and B have long meander time scales, so the test now compares 3-seed means, which are ordered on both axes.
+2. **B11.38 warm-up reach:** `WARMUP_S` raised from 60 s to 120 s.
+3. **Rerun, seed-spread job crash:** a transient error inside Warp that did not reproduce. The runner retries once and records it.
+
+Open, reported: with N_PUFFS = 2560, a 1-hour run still overwrites 1 puff (0.005% of the mass). Puffs that linger near the ground live up to about 400 s; N_PUFFS = 3200 would remove this. Episodes of 200 s (+120 s warm-up) never overflow.
 
 ## Code changes this round
 
@@ -96,7 +99,7 @@ Each is in its commit and in `CHANGELOG.md`, under "Pre-merge round".
 - Units helpers.
 - Input validation.
 
-Not changed (reported): `WARMUP_S`, `N_PUFFS`.
+Follow-up after review: `WARMUP_S` 60 → 120 s, `N_PUFFS` 2048 → 2560, B7.25 on 3-seed means, `run_parallel` retries a crashed job once.
 
 ## Limitations to state in the paper
 
