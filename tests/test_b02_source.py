@@ -71,12 +71,16 @@ def test_source_next_to_wall(record):
             pos, *_ = H.puffs(sim)
             inside += int((H.sdf_box(pos, wall.center, wall.half_extents) < 0).sum())
     pos, vel, mass, ages = H.puffs(sim)
-    S = np.c_[np.full(40, 84.0), np.linspace(50, 78, 40), np.full(40, 10.0)]
+    # far side: 2–40 m behind the wall, beside and above its shadow (gas that went around/over)
+    X, Y, Z = np.meshgrid([84.0, 100.0, 120.0], np.linspace(30, 98, 18), [5.0, 15.0, 32.0], indexing="ij")
+    S = np.c_[X.ravel(), Y.ravel(), Z.ravel()]
     C_gpu = sim.query_concentration(S.astype(np.float32)).astype(float)
     C_ref = H.conc_reference64(S, pos, mass, ages, sim.sigma_0, sim.k_rel, (), (wall,))
     rel = np.abs(C_gpu - C_ref) / max(C_ref.max(), 1e-30)
-    record(puffs_inside_logged=inside, far_side_C_max=float(C_gpu.max()), max_rel_err_vs_ref=float(rel.max()))
+    record(puffs_inside_logged=inside, far_side_C_max=float(C_gpu.max()), max_rel_err_vs_ref=float(rel.max()),
+           n_far_side_nonzero=int((C_ref > 0).sum()), n_blocked_shadow=int(((C_ref == 0) & (S[:, 2] < 30)).sum()))
     assert inside == 0
+    assert (C_ref > 0).sum() > 10          # the comparison is not vacuous
     assert rel.max() < 1e-4
 
 

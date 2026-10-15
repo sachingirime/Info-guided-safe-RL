@@ -63,17 +63,43 @@ Every behaviour change, with the old and new value. Validation numbers are in
 Not changed: `CONC_NOISE_FLOOR` (3e-4), `DETECT_TEMPERATURE` (1e-4), `SIGMA_E`, `BIAS`, `Q_INIT` (5 kg/s), `V_MAX` (10 m/s), `CONVERGE_DIST` (0, RL setting).
 Consequence for RL: with the narrower plume, a random drone-zone point is above the 3e-4 kg/m³ detection floor 0.5% of the time (pre-fix 7.5%).
 
+### Pre-merge round (Parts A–B of the pre-merge plan)
+
+| ID | Change | Old | New |
+|---|---|---|---|
+| A3 | Shared-eddy flag | `release_correlation` | `shared_eddies` (default True); attributed to the meandering-plume model (Gifford 1959; Anfossi et al. 2006), not GADEN |
+| A5 | Realised 10 m wind | 0.80–0.82 × requested (relaxation + drag), gusts added +0.09 m/s mean | `drag_compensation` (default True) and zero-mean gusts: 1.001–1.006 × requested |
+| A6 | V3 σ_z fit | ground-reflected fit, h fixed | same (primary) + free-h fit reported |
+| A7 | Class-dependent release size | — | optional `class_sigma0`, `lsm_table`; off by default (does not make E/F pass) |
+| B1 | Calm wind | σ = a·U → 0 as U → 0 | `sigma_min` = 0.05 m/s floor (new physics parameter; affects only a·U < 0.05 m/s: class F σ_w below 3.1 m/s, E σ_w below 1.7 m/s, D σ_w below 0.8 m/s). The wind model's existing 0.3 m/s minimum speed is unchanged |
+| B1 | Wind rotation | — | `set_wind_direction()` |
+| B2 | Source inside an obstacle | env could spawn it (2.71% of resets, fixed sphere at (46, 92, 21)); sim accepted it | env resamples with 2 m clearance; `source_pos` raises ValueError inside an obstacle or outside the domain; mobile source never steps into an obstacle |
+| B3 | Query below ground / outside the domain | image term mirrored the plume below z = 0; out-of-domain points summed nearby puffs | returns 0 |
+| B5 | Frame rate | fixed 30 fps; env ran round(DT/frame_dt) frames per step (drifted for non-integer ratios: −200 s per 10,000 steps at 25 fps) | `fps` argument; env steps the sim to the elapsed env time (drift < 1e-9 s) |
+| B6 | Mass bookkeeping | counts only | exited/overwritten mass counters; one-time overflow warning naming the needed `N_PUFFS` |
+| B7 | Closed box | — | `closed_domain` (tests only) |
+| B8 | Obstacle push-out | puff at a sphere centre stayed inside; puff in a crevice between overlapping obstacles could end inside one | +z fallback normal; two passes; lift until clear |
+| B11 | Drone spawn | always the unchecked fallback (230, 115, 9): the source-window exclusion covered the whole spawn area | `DRONE_SPAWN = "random"` (≥ 30 m from the source, ≥ 5 m from obstacles); `"corner"` reproduces the old position, validated. **Changes the RL episode distribution** |
+| B11 | Reset | MLE estimate (obs[9]) leaked across episodes | cleared in `reset()` |
+| B11 | Units | — | `kgm3_to_ppm`, `ppm_to_kgm3` |
+| B12 | Input validation | none | ValueError for negative Q, σ₀, K_rel, wind speed, σ_min, fps ≤ 0, unknown class/preset, invalid or out-of-domain obstacles, > 10 obstacles, env N_PUFFS too small for the warm-up, env domain ≠ fluid grid |
+
+Reported, not changed (see `tests/SUMMARY.md`): `WARMUP_S` = 60 s is too short for the plume to reach 100 m at 1.5 m/s (5 of 10 episodes reached 69–90 m); `N_PUFFS` = 2048 overflows in a 1 h run (24 puffs; ≥ 2560 needed), not in 200 s episodes.
+
 ### Tooling
 
 - `test_env.py` rewritten: 9 tests (obs, determinism, no grid gas, emission count, RNG, LSM, shared-eddy release, LOS, kernel mass).
 - `validation/`: `diag_state.py`, `validate_sim.py` (V0–V8), `fit_tl.py`, `make_before_figure.py`, `results.json`, figures.
 - `realtime_viz.py`: `--headless` paper figures, puff spheres sized by σ_puff, dead first copy removed.
 - `requirements.txt` pinned.
+- `tests/` (pytest) edge-case and reliability suite, `run_all_tests.sh [--slow]`, `tests/report.json`, `tests/SUMMARY.md`.
 
 ### Known limitations
 
 - Briggs formulas are stated for 100 m–10 km; the 25–100 m comparison is an extrapolation.
-- Class F (and A σ_z at 50 m) are outside the V3 band at short range; σ₀ = 1 m exceeds Briggs F σ_z (0.4 m at 25 m).
+- Classes E and F are outside the V3 band at short range (σ₀ = 1 m and K_rel·t exceed Briggs F σ_z = 0.4 m at 25 m); a class-dependent σ₀ alone does not fix it.
+- Class A σ_z at 50 m is at the band edge (×0.68 on a 3-seed ensemble, low in every seed): homogeneous Gaussian Langevin model vs convective turbulence. Classes A/B need multi-seed averages (single-run σ_y CoV ≈ 19–29%).
+- Calm wind: σ floor 0.05 m/s and the wind model's 0.3 m/s minimum speed.
 - Hay–Pasquill γ = 0.6 is an order-one constant, not verified against a specific dataset.
 - Pressure projection on the collocated grid removes ~55% of the divergence; more SOR iterations do not help (discretisation mismatch).
 - Grid size is fixed at 64×32×32 × 4 m (module-level constants).

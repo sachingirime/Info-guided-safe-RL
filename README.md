@@ -35,7 +35,7 @@ Continuous velocity command in R^3, clipped to [-V_MAX, V_MAX] with **V_MAX = 10
 ## Installation
 
 ```bash
-pip install -r requirements.txt     # pyvista only for realtime_viz.py
+pip install -r requirements.txt pytest   # pyvista only for realtime_viz.py
 ```
 
 Requires a CUDA-capable GPU for the Warp fluid solver.
@@ -90,7 +90,9 @@ Env-only arguments: `warmup_s` (default 60 s), `wind_noise` (default `True`: OU 
 ## Testing and validation
 
 ```bash
-python test_env.py                        # unit tests (~10 s)
+./run_all_tests.sh                        # pytest suite, fast tests (~2 min); writes tests/report.json
+./run_all_tests.sh --slow                 # everything incl. long runs (~30 min on a 4090)
+python test_env.py                        # core unit tests (~10 s)
 python validation/diag_state.py           # before/after state diagnostic
 python validation/validate_sim.py         # V0-V8 (~25 min on a 4090), writes validation/results.json + validation/figs/
 python validation/fit_tl.py               # refit the T_L table (validation/tl_fit.json)
