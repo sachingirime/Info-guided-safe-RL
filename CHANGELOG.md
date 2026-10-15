@@ -16,7 +16,7 @@ Every behaviour change, with the old and new value. Validation numbers are in
 | Puff mass | Current Q × τe applied to all puffs at query time | Stored per puff at release (Q·τe) | Wrong with `Q_GROWTH` |
 | Release jitter | Hidden 1.5 m | `release_jitter=0` | Undocumented |
 | Ring buffer | Overwrites silent | `n_emitted`, `n_overwritten`, `n_exited` counters | Detect mass loss |
-| Env `N_PUFFS` | 1024 (20–213 puffs overwritten per 200 s episode, ≤16% of mass) | 2048 (0 overwritten) | Mass loss |
+| Env `N_PUFFS` | 1024 (20–213 puffs overwritten per 200 s episode, ≤16% of mass) | 2560 (2048 first; a 1 h run still overwrote 24 puffs) | Mass loss |
 | Line of sight | Puffs summed through obstacles | Segment–sphere/box test from puff centre; points inside obstacles read 0 (`use_los=True`) | Gas leaked through walls |
 
 ### Puff dispersion
@@ -53,7 +53,7 @@ Every behaviour change, with the old and new value. Validation numbers are in
 
 | Change | Old | New |
 |---|---|---|
-| Warm-up | 10 frames (0.33 s) | `WARMUP_S` = 60 s |
+| Warm-up | 10 frames (0.33 s) | `WARMUP_S` = 120 s (60 s first; plume reached < 100 m in 5/10 episodes) |
 | Obstacle placement | After warm-up started | Before warm-up |
 | Puff seed | Fixed | Drawn from the env RNG each reset |
 | `CONC_SIG_CEIL` | 5e-3 kg/m³ (saturated c_norm for 41–55% of detections with the new plume) | 0.1 kg/m³ (6–10%) |
@@ -84,7 +84,7 @@ Consequence for RL: with the narrower plume, a random drone-zone point is above 
 | B11 | Units | — | `kgm3_to_ppm`, `ppm_to_kgm3` |
 | B12 | Input validation | none | ValueError for negative Q, σ₀, K_rel, wind speed, σ_min, fps ≤ 0, unknown class/preset, invalid or out-of-domain obstacles, > 10 obstacles, env N_PUFFS too small for the warm-up, env domain ≠ fluid grid |
 
-Reported, not changed (see `tests/SUMMARY.md`): `WARMUP_S` = 60 s is too short for the plume to reach 100 m at 1.5 m/s (5 of 10 episodes reached 69–90 m); `N_PUFFS` = 2048 overflows in a 1 h run (24 puffs; ≥ 2560 needed), not in 200 s episodes.
+Follow-up after review: `WARMUP_S` 60 → 120 s (plume reached < 100 m in 5/10 episodes at 1.5 m/s) and `N_PUFFS` 2048 → 2560 (a 1 h run overwrote 24 puffs); B7.25 class ordering compares 3-seed means (single runs of classes A/B scatter by 19–29%).
 
 ### Tooling
 

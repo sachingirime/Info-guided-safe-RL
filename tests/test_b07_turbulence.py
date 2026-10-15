@@ -57,12 +57,18 @@ def test_well_mixed_closed_box(record):
 
 @pytest.mark.slow
 def test_class_ordering(record):
-    """At x = 100 m and the same realised U10: σy, σz decrease from A to F."""
-    res = H.run_parallel([("v3_class", {"pg": c, "seed": 1, "avg": 3600.0}) for c in "ABCDEF"])
+    """At x = 100 m and the same realised U10: σy, σz decrease from A to F.
+    Compared on 3-seed means: single 3600 s runs of the long-T_E classes scatter
+    too much (σy CoV ≈ 29% for A, 19% for B) to order A and B reliably."""
+    seeds = (1, 2, 3)
+    res = H.run_parallel([("v3_class", {"pg": c, "seed": s, "avg": 3600.0}) for c in "ABCDEF" for s in seeds])
     at = lambda r, k: next(x[k] for x in r["rows"] if x["x_minus_xs"] == 100.0)
-    sy = [at(r, "sigma_y_sim") for r in res]; sz = [at(r, "sigma_z_sim") for r in res]
-    gam = [r["centreline_intermittency"][2] for r in res]          # 100 m
-    record(classes=list("ABCDEF"), sigma_y_100m=sy, sigma_z_100m=sz, intermittency_100m=gam,
+    per = {c: [r for r in res if r["class"] == c] for c in "ABCDEF"}
+    sy = [float(np.mean([at(r, "sigma_y_sim") for r in per[c]])) for c in "ABCDEF"]
+    sz = [float(np.mean([at(r, "sigma_z_sim") for r in per[c]])) for c in "ABCDEF"]
+    gam = [float(np.mean([r["centreline_intermittency"][2] for r in per[c]])) for c in "ABCDEF"]
+    record(classes=list("ABCDEF"), seeds=list(seeds), sigma_y_100m=sy, sigma_z_100m=sz, intermittency_100m=gam,
+           sigma_y_100m_per_seed={c: [at(r, "sigma_y_sim") for r in per[c]] for c in "ABCDEF"},
            U10=[r["U10"] for r in res])
     assert all(a > b for a, b in zip(sy, sy[1:])), sy
     assert all(a > b for a, b in zip(sz, sz[1:])), sz

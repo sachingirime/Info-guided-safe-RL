@@ -7,7 +7,7 @@ Built on [NVIDIA Warp](https://developer.nvidia.com/warp), the environment coupl
 ## Features
 
 - **GPU-accelerated 3D fluid simulation** via NVIDIA Warp (64x32x32 grid, 4 m cells, 256x128x128 m domain)
-- **Lagrangian Gaussian puff model** (up to 2048 puffs in the env): RK2 advection on the resolved wind plus a per-puff OU turbulent velocity (Lagrangian stochastic model calibrated to Briggs), ground image, line-of-sight occlusion by obstacles
+- **Lagrangian Gaussian puff model** (up to 2560 puffs in the env): RK2 advection on the resolved wind plus a per-puff OU turbulent velocity (Lagrangian stochastic model calibrated to Briggs), ground image, line-of-sight occlusion by obstacles
 - **Pasquill-Gifford stability classes** (A-G) for turbulent diffusivity, shear exponent and lapse rate
 - **Methane sensor model** with bias, noise, first-order lag and soft sigmoid detection
 - **Mobile gas source** with Ornstein-Uhlenbeck drift
@@ -46,7 +46,7 @@ Requires a CUDA-capable GPU for the Warp fluid solver.
 from gaussian_puff_env import GaussianPuffEnv
 
 env = GaussianPuffEnv()
-obs, info = env.reset(seed=42)    # advances WARMUP_S = 60 s so the plume is developed
+obs, info = env.reset(seed=42)    # advances WARMUP_S = 120 s so the plume is developed
 
 for _ in range(200):
     action = env.action_space.sample()
@@ -85,7 +85,7 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 | `use_grid_gas` | `False` | Legacy Eulerian gas field + source jet (pre-fix figures only) |
 | `legacy_emission` | `False` | Legacy two puffs per interval (pre-fix figures only) |
 
-Env-only arguments: `warmup_s` (default 60 s), `wind_noise` (default `True`: OU anemometer turbulence with the class σ and `wind_noise_tau` = 1 s).
+Env-only arguments: `warmup_s` (default 120 s), `wind_noise` (default `True`: OU anemometer turbulence with the class σ and `wind_noise_tau` = 1 s).
 
 ## Testing and validation
 
@@ -133,7 +133,7 @@ Tag `pre-fix` = commit `1d30cdb`. Branch `sim-fix` changes:
 7. **Ground drag** scaled by dt (was per frame).
 8. **Line-of-sight occlusion**: gas no longer leaks through obstacles.
 9. **Gusts** are a Poisson process with the stated mean interval (pre-fix fired every ~3 s, active 69% of the time).
-10. **Env**: per-episode puff seed, obstacles placed before a 60 s warm-up (was 0.33 s, after the plume started), `N_PUFFS` 1024 → 2048 (1024 overwrote up to 16% of emitted puffs per episode), `CONC_SIG_CEIL` 5e-3 → 0.1 kg/m³, anemometer turbulence, corrected docstrings.
+10. **Env**: per-episode puff seed, obstacles placed before a 120 s warm-up (was 0.33 s, after the plume started), `N_PUFFS` 1024 → 2560 (1024 overwrote up to 16% of emitted puffs per episode), `CONC_SIG_CEIL` 5e-3 → 0.1 kg/m³, anemometer turbulence, corrected docstrings.
 
 Full list with old/new values: [CHANGELOG.md](CHANGELOG.md).
 

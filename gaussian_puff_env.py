@@ -142,9 +142,10 @@ class GaussianPuffEnv(gym.Env):
     Q_INIT      = 5.0       # kg/s — methane mass emission rate
     Q_GROWTH    = 0.0       # kg/s² — emission rate increase over time (0 = constant)
     PUFF_PERIOD = 0.2       # s — interval between puff emissions
-    N_PUFFS     = 2048      # max Lagrangian puff particles (was 1024: slow near-ground puffs
-                            # outlive 1024 × 0.2 s = 205 s and were overwritten — 20–213 per
-                            # 200 s episode, up to 16% of emitted mass; see sim.n_overwritten)
+    N_PUFFS     = 2560      # max Lagrangian puff particles = 512 s of puffs.  Was 1024 (slow
+                            # near-ground puffs outlive 205 s: 20–213 overwritten per 200 s
+                            # episode), then 2048 (a 1 h run overwrote 24 puffs; the overflow
+                            # warning asked for ≥ 2560).  See sim.n_overwritten.
 
     SIGMA_0 = 1.0           # m — initial puff standard deviation (was 2.0: larger than
                             # Briggs D σ_z at 25 m; LSM T_L table is fitted for σ₀ = 1 m)
@@ -227,7 +228,9 @@ class GaussianPuffEnv(gym.Env):
     # Warm-up: sim time advanced in reset() so episodes start with a
     # developed plume (pre-fix: 10 frames ≈ 0.33 s).
     # ------------------------------------------------------------------
-    WARMUP_S = 60.0
+    WARMUP_S = 120.0        # was 60 s: at the env wind (1.5 m/s at 10 m, slower near the
+                            # ground) the plume reached only 69–90 m in 5 of 10 episodes;
+                            # 120 s lets it reach ≥ 100 m downwind (B11.38)
 
     # ------------------------------------------------------------------
     # Fixed obstacles
