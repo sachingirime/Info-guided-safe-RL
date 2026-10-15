@@ -1197,6 +1197,7 @@ class HybridFluidPuffSimulation:
                  drag_compensation=True,
                  class_sigma0=None,
                  sigma_min=0.05,
+                 fps=30,
                  lsm_table=None,
                  hp_gamma=HP_GAMMA):
         """
@@ -1226,6 +1227,7 @@ class HybridFluidPuffSimulation:
                             (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
+        fps               : simulation steps per second (Δt = 1/fps); default 30.
         sigma_min         : m/s, floor on the LSM velocity σ (calm wind; σ = a·U
                             otherwise vanishes).  Affects only a·U < sigma_min.
         class_sigma0      : optional {class: σ₀ (m)} overriding sigma_0 for those
@@ -1279,7 +1281,9 @@ class HybridFluidPuffSimulation:
         self.wind_angle_range = wind_angle_range
         self.wind_base_speed = wind_base_speed
 
-        self.fps=30; self.frame_dt=1.0/self.fps; self.sim_dt=self.frame_dt; self.sim_time=0.0
+        if not fps > 0:
+            raise ValueError("fps must be > 0")
+        self.fps=float(fps); self.frame_dt=1.0/self.fps; self.sim_dt=self.frame_dt; self.sim_time=0.0
         self.dx=DX; self.wind_shape=(NX, NY, NZ)
 
         self.u0=wp.zeros(self.wind_shape,dtype=wp.vec3); self.u1=wp.zeros(self.wind_shape,dtype=wp.vec3)

@@ -523,6 +523,7 @@ class GaussianPuffEnv(gym.Env):
         # Warm up: WARMUP_S of sim time so the plume is developed at t = 0
         for _ in range(int(round(self.WARMUP_S / self.fluid_sim.frame_dt))):
             self.fluid_sim.step()
+        self._sim_t0 = self.fluid_sim.sim_time     # sim time at env t = 0
 
         # Drone spawn
         for _ in range(2000):
@@ -589,9 +590,14 @@ class GaussianPuffEnv(gym.Env):
             self.fluid_sim.source_pos = self.theta.astype(np.float32)
 
         # Advance fluid sim
-        n_substeps = max(1, int(round(self.DT / self.fluid_sim.frame_dt)))
-        for _ in range(n_substeps):
-            self.fluid_sim.step()
+        # Step the sim until it reaches the env time of this step (to within
+        # half a frame).  Pre-B5 the env ran round(DT/frame_dt) frames per step,
+        # which drifts when DT/frame_dt is not an integer (25 fps: 0.08 s per
+        # 0.1 s step).
+        sim = self.fluid_sim
+        target = self._sim_t0 + (self.step_count + 1) * self.DT
+        while sim.sim_time + 0.5 * sim.frame_dt < target:
+            sim.step()
 
         self.t          += self.DT
         self.step_count += 1

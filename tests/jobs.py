@@ -83,6 +83,41 @@ def v3_class(pg="D", seed=1, avg=3600.0, sim_kwargs=None):
             "centreline_intermittency": gam}
 
 
+
+
+def v1_metrics(fps=30, k_rel=0.05, avg=1800.0, seed=1, shared_eddies=False):
+    """V1 configuration at a given frame rate: σy, σz (second moments) and
+    centreline C at 25/50/100 m."""
+    import validate_sim as V
+    sim = V.make_sim(V.V1_SRC, V.V1_U, Q=1.0, emit=0.2, seed=seed, K_rel=k_rel, steady_wind=True,
+                     shared_eddies=shared_eddies, shear_exponent=0.0, ground_drag_rate=0.0, fps=fps)
+    pts = [V.plane(V.V1_SRC[0] + d, V.V1_YS, V.V1_ZS) for d in V.V1_X]
+    P = np.concatenate([p for p, _ in pts]); acc = np.zeros(len(P)); n = [0]
+    V.run(sim, 150.0)
+
+    def cb():
+        acc[:] += sim.query_concentration(P); n[0] += 1
+    V.run(sim, avg, every=0.5, cb=cb)
+    F = (acc / n[0]).reshape(len(V.V1_X), *pts[0][1])
+    jy = int(np.argmin(abs(V.V1_YS - V.V1_SRC[1]))); kz = int(np.argmin(abs(V.V1_ZS - V.V1_SRC[2])))
+    out = []
+    for d, C in zip(V.V1_X, F):
+        out.append({"x": d, "sigma_y": V.moment_sigma(C.sum(1), V.V1_YS)[0], "sigma_z": V.moment_sigma(C.sum(0), V.V1_ZS)[0],
+                    "c_cl": float(C[jy, kz])})
+    return {"fps": fps, "rows": out, "n_emitted": sim.n_emitted, "sim_time": sim.sim_time}
+
+
+def env_clock(fps=30, steps=10000):
+    from gaussian_puff_env import GaussianPuffEnv
+    env = GaussianPuffEnv(seed=0, warmup_s=5.0, fps=fps)
+    env.reset(seed=1)
+    t0 = env.fluid_sim.sim_time
+    for _ in range(steps):
+        env.step(np.zeros(3, np.float32))
+    drift = (env.fluid_sim.sim_time - t0) - steps * env.DT
+    return {"fps": fps, "drift_s": drift, "frame_dt": env.fluid_sim.frame_dt}
+
+
 if __name__ == "__main__":
     fn, kw = sys.argv[1], json.loads(sys.argv[2])
     res = globals()[fn](**kw)
