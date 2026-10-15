@@ -263,6 +263,14 @@ class GaussianPuffEnv(gym.Env):
     OBSTACLE_SPAWN_MARGIN = 8.0
     SOURCE_OBSTACLE_CLEARANCE = 2.0   # m, minimum source distance to any obstacle surface
 
+    # Drone spawn: "random" = uniform in the domain, ≥ DRONE_SOURCE_MIN_DIST from the
+    # source (horizontal) and ≥ 5 m from obstacles.  "corner" = the fixed point
+    # (230, 115, SPAWN_Z_MIN + 5) used by every pre-B11 episode: the old loop
+    # rejected points inside SOURCE_XY window ± 12 m, which after the window was
+    # widened covered the whole spawn area, so it always fell back to the corner.
+    DRONE_SPAWN = "random"
+    DRONE_SOURCE_MIN_DIST = 30.0
+
     # ------------------------------------------------------------------
 
     def __init__(self, seed: int = None, source_mobile: bool = False,
@@ -277,8 +285,14 @@ class GaussianPuffEnv(gym.Env):
         """
         super().__init__()
         self._sim_kwargs = dict(sim_kwargs)
+        grid = np.array([NX, NY, NZ]) * FLUID_DX
+        if not np.allclose(self.DOMAIN_MAX, grid) or not np.allclose(self.DOMAIN_MIN, 0.0):
+            raise ValueError(f"DOMAIN {self.DOMAIN_MIN}–{self.DOMAIN_MAX} does not match the fluid grid {grid}")
         if warmup_s is not None:
             self.WARMUP_S = float(warmup_s)
+        if self.N_PUFFS * self.PUFF_PERIOD < self.WARMUP_S:
+            raise ValueError(f"N_PUFFS={self.N_PUFFS} holds only {self.N_PUFFS * self.PUFF_PERIOD:.0f} s of puffs, "
+                             f"less than WARMUP_S={self.WARMUP_S:.0f} s")
         self.wind_noise = bool(wind_noise)
         if wind_noise_tau is not None:
             self.WIND_NOISE_TAU = float(wind_noise_tau)
@@ -526,28 +540,7 @@ class GaussianPuffEnv(gym.Env):
         self._sim_t0 = self.fluid_sim.sim_time     # sim time at env t = 0
 
         # Drone spawn
-        for _ in range(2000):
-            xy = self._rng.uniform(
-                self.DOMAIN_MIN[:2] + 5.0,
-                self.DOMAIN_MAX[:2] - 5.0,
-            )
-            z  = self._rng.uniform(self.SPAWN_Z_MIN, self.SPAWN_Z_MAX)
-            p  = np.array([xy[0], xy[1], z])
-
-            src_xy_dist = np.linalg.norm(p[:2] - self.theta[:2])
-            in_cluster  = (
-                self.SOURCE_XY_MIN[0] - 12 <= p[0] <= self.SOURCE_XY_MAX[0] + 12
-                and self.SOURCE_XY_MIN[1] - 12 <= p[1] <= self.SOURCE_XY_MAX[1] + 12
-            )
-            if (src_xy_dist > 30.0
-                    and not in_cluster
-                    and not self._in_collision(p)
-                    and self.nearest_obstacle_distance(p) > 5.0):
-                self.p = p
-                break
-        else:
-            # Fallback position (verified >60m from all fixed obstacles)
-            self.p = np.array([230.0, 115.0, self.SPAWN_Z_MIN + 5.0])
+        self.p = self._spawn_drone()
 
         self.v = np.zeros(3, dtype=np.float64)
         self._wind_noise_state = (np.array(self.fluid_sim.lsm_sigma) * self._rng.standard_normal(3)
@@ -556,6 +549,7 @@ class GaussianPuffEnv(gym.Env):
         self.t = 0.0
         self.step_count = 0
         self._zeta_inv_norm = 0.0    # reset EMGR metric each episode
+        self._theta_hat = None       # MLE estimate from the previous episode must not leak
         self._info_map[:] = 0.0      # reset information map
 
         self._c_true = self.concentration(self.p)
@@ -624,6 +618,32 @@ class GaussianPuffEnv(gym.Env):
         info["min_obs_dist"]   = self.nearest_obstacle_distance(self.p)
 
         return self._get_obs().astype(np.float32), reward, terminated, truncated, info
+
+    def _drone_spawn_ok(self, p):
+        return (np.linalg.norm(p[:2] - self.theta[:2]) > self.DRONE_SOURCE_MIN_DIST
+                and self.nearest_obstacle_distance(p) > 5.0)
+
+    def _spawn_drone(self):
+        if self.DRONE_SPAWN == "corner":
+            corners = [np.array([230.0, 115.0, self.SPAWN_Z_MIN + 5.0]), np.array([26.0, 13.0, self.SPAWN_Z_MIN + 5.0]),
+                       np.array([230.0, 13.0, self.SPAWN_Z_MIN + 5.0]), np.array([26.0, 115.0, self.SPAWN_Z_MIN + 5.0])]
+            for p in corners:
+                if self._drone_spawn_ok(p):
+                    return p
+        elif self.DRONE_SPAWN != "random":
+            raise ValueError(f"DRONE_SPAWN must be 'random' or 'corner' (got {self.DRONE_SPAWN!r})")
+        for _ in range(2000):
+            xy = self._rng.uniform(self.DOMAIN_MIN[:2] + 5.0, self.DOMAIN_MAX[:2] - 5.0)
+            p = np.array([xy[0], xy[1], self._rng.uniform(self.SPAWN_Z_MIN, self.SPAWN_Z_MAX)])
+            if self._drone_spawn_ok(p):
+                return p
+        # deterministic grid search as a last resort
+        for x in np.linspace(10, self.DOMAIN_MAX[0] - 10, 25):
+            for y in np.linspace(10, self.DOMAIN_MAX[1] - 10, 13):
+                p = np.array([x, y, self.SPAWN_Z_MIN + 5.0])
+                if self._drone_spawn_ok(p):
+                    return p
+        raise RuntimeError("no valid drone spawn position")
 
     # ── Source mobility (OU process) ─────────────────────────────────────
 

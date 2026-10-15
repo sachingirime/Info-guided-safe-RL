@@ -28,7 +28,7 @@ _T0 = time.time()
 
 
 def _plain(v):
-    if isinstance(v, (np.floating, np.integer)):
+    if isinstance(v, (np.floating, np.integer, np.bool_)):
         return v.item()
     if isinstance(v, np.ndarray):
         return v.tolist()
@@ -85,4 +85,4 @@ def pytest_sessionfinish(session, exitstatus):
                     "warp": wp.__version__, "numpy": np.__version__, "gpu": smi},
            "tests": [{"test": k, **v, "numbers": _NUMBERS.get(k, {})} for k, v in _RESULTS.items()]}
     with open(os.path.join(ROOT, "tests", "report.json"), "w") as f:
-        json.dump(out, f, indent=1)
+        json.dump(out, f, indent=1, default=str)

@@ -1197,6 +1197,21 @@ class WindVectorModel:
 WindDirectionModel = WindVectorModel
 
 
+# ── Units ────────────────────────────────────────────────────────────────────
+R_GAS = 8.314462618          # J/(mol·K)
+M_CH4 = 0.01604              # kg/mol
+
+
+def kgm3_to_ppm(c, T=293.15, P=101325.0, M=M_CH4):
+    """Mass concentration (kg/m³) → volume mixing ratio (ppm): c·R·T/(M·P)·1e6."""
+    return np.asarray(c, dtype=np.float64) * R_GAS * T / (M * P) * 1e6
+
+
+def ppm_to_kgm3(ppm, T=293.15, P=101325.0, M=M_CH4):
+    """Volume mixing ratio (ppm) → mass concentration (kg/m³)."""
+    return np.asarray(ppm, dtype=np.float64) * 1e-6 * M * P / (R_GAS * T)
+
+
 # ── Main simulation class ────────────────────────────────────────────────────
 
 class HybridFluidPuffSimulation:
@@ -1322,6 +1337,8 @@ class HybridFluidPuffSimulation:
         self.wind_preset = wind_preset
         self.turb_scale = float(WIND_PRESETS[wind_preset]["turb_scale"] if turb_scale is None else turb_scale)
         self.wind_angle_range = wind_angle_range
+        if not wind_base_speed >= 0:
+            raise ValueError(f"wind_base_speed must be >= 0 (got {wind_base_speed})")
         self.wind_base_speed = wind_base_speed
 
         self.closed_domain = bool(closed_domain)
@@ -1555,6 +1572,30 @@ class HybridFluidPuffSimulation:
                       inputs=[self.p0, self.div, self.obstacle_mask, omega, 1])
             
     @property
+    def Q(self):
+        """Emission rate (kg/s)."""
+        return self._Q
+
+    @Q.setter
+    def Q(self, q):
+        q = float(q)
+        if not q >= 0:
+            raise ValueError(f"Q must be >= 0 kg/s (got {q})")
+        self._Q = q
+
+    @property
+    def sigma_0(self):
+        """Initial puff standard deviation (m)."""
+        return self._sigma_0
+
+    @sigma_0.setter
+    def sigma_0(self, s):
+        s = float(s)
+        if not s > 0:
+            raise ValueError(f"sigma_0 must be > 0 m (got {s})")
+        self._sigma_0 = s
+
+    @property
     def source_pos(self):
         return self._source_pos
 
@@ -1586,6 +1627,16 @@ class HybridFluidPuffSimulation:
         return d
 
     def set_obstacles(self, spheres, cuboids):
+        dmax = np.array([NX*DX, NY*DX, NZ*DX])
+        if len(spheres) > _MAX_SPHERES or len(cuboids) > _MAX_CUBOIDS:
+            raise ValueError(f"at most {_MAX_SPHERES} spheres and {_MAX_CUBOIDS} cuboids")
+        for o in list(spheres) + list(cuboids):
+            c = np.asarray(o.center, float)
+            ext = np.full(3, float(o.radius)) if hasattr(o, "radius") else np.asarray(o.half_extents, float)
+            if not (np.all(np.isfinite(c)) and np.all(ext > 0)):
+                raise ValueError(f"invalid obstacle {o}")
+            if np.any(c + ext < 0) or np.any(c - ext > dmax):
+                raise ValueError(f"obstacle at {c.tolist()} lies entirely outside the domain [0, {dmax.tolist()}]")
         self._spheres_host = list(spheres)[:_MAX_SPHERES]
         self._cuboids_host = list(cuboids)[:_MAX_CUBOIDS]
         self.n_spheres=min(len(spheres),_MAX_SPHERES); self.n_cuboids=min(len(cuboids),_MAX_CUBOIDS)
