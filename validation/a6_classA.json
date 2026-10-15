@@ -1,0 +1,130 @@
+{
+ "A": {
+  "n_seeds": 3,
+  "U10_realised": [
+   3.02878999710083,
+   3.0058999061584473,
+   3.0055229663848877
+  ],
+  "ensemble_rows": [
+   {
+    "x_minus_xs": 25.0,
+    "sigma_y_sim": 5.367235532713397,
+    "sigma_z_sim": 4.94329587034471,
+    "sigma_z_free_h": 4.9467162493263155,
+    "h_fit": 9.903409705676344,
+    "sigma_y_moment": 5.858441179858918,
+    "plume_center_y": 65.35980154669173,
+    "sigma_y_briggs": 5.493137863828146,
+    "sigma_z_briggs": 5.0,
+    "ratio_y": 0.9770800707654171,
+    "ratio_z": 0.988659174068942,
+    "ratio_z_free_h": 0.9893432498652631
+   },
+   {
+    "x_minus_xs": 50.0,
+    "sigma_y_sim": 11.349980270336138,
+    "sigma_z_sim": 6.841655546189373,
+    "sigma_z_free_h": 6.890589577566208,
+    "h_fit": 10.171300641368989,
+    "sigma_y_moment": 12.151611711372226,
+    "plume_center_y": 69.04066117641999,
+    "sigma_y_briggs": 10.972602697183962,
+    "sigma_z_briggs": 10.0,
+    "ratio_y": 1.0343927127926564,
+    "ratio_z": 0.6841655546189374,
+    "ratio_z_free_h": 0.6890589577566207
+   },
+   {
+    "x_minus_xs": 100.0,
+    "sigma_y_sim": 21.66357246594373,
+    "sigma_z_sim": 20.006787468447854,
+    "sigma_z_free_h": 10.38966269851194,
+    "h_fit": 15.4954524089466,
+    "sigma_y_moment": 21.390293245685516,
+    "plume_center_y": 68.98111687364396,
+    "sigma_y_briggs": 21.890818184619764,
+    "sigma_z_briggs": 20.0,
+    "ratio_y": 0.9896191308721528,
+    "ratio_z": 1.0003393734223927,
+    "ratio_z_free_h": 0.519483134925597
+   },
+   {
+    "x_minus_xs": 150.0,
+    "sigma_y_sim": 31.011054692069454,
+    "sigma_z_sim": 28.38612039434712,
+    "sigma_z_free_h": 16.51936251548717,
+    "h_fit": 20.2373869059302,
+    "sigma_y_moment": 27.403928413930224,
+    "plume_center_y": 65.75387986018724,
+    "sigma_y_briggs": 32.755250021040695,
+    "sigma_z_briggs": 30.0,
+    "ratio_y": 0.9467506635470394,
+    "ratio_z": 0.946204013144904,
+    "ratio_z_free_h": 0.5506454171829057
+   },
+   {
+    "x_minus_xs": 200.0,
+    "sigma_y_sim": 40.30406089496495,
+    "sigma_z_sim": 37.359518886077986,
+    "sigma_z_free_h": 21.294083236524475,
+    "h_fit": 25.271294041221044,
+    "sigma_y_moment": 30.964605339839984,
+    "plume_center_y": 65.14127415657185,
+    "sigma_y_briggs": 43.566491890973666,
+    "sigma_z_briggs": 40.0,
+    "ratio_y": 0.925116050101692,
+    "ratio_z": 0.9339879721519496,
+    "ratio_z_free_h": 0.5323520809131119
+   }
+  ],
+  "per_seed_ratio_z": [
+   [
+    0.945,
+    0.907,
+    0.724,
+    0.871,
+    0.893
+   ],
+   [
+    0.995,
+    0.774,
+    1.109,
+    0.991,
+    0.907
+   ],
+   [
+    0.992,
+    0.733,
+    0.529,
+    0.593,
+    0.675
+   ]
+  ],
+  "per_seed_ratio_y": [
+   [
+    1.013,
+    1.152,
+    0.88,
+    0.946,
+    0.912
+   ],
+   [
+    1.032,
+    1.186,
+    1.203,
+    0.94,
+    0.768
+   ],
+   [
+    0.688,
+    0.692,
+    0.676,
+    0.709,
+    0.776
+   ]
+  ],
+  "ensemble_pass": true,
+  "conclusion": "\u03c3_z was already fitted with the ground-image-aware Gaussian (real + image, h fixed at the source height); a free-h variant is now reported too. Class A, ensemble of 3 seeds \u00d7 3600 s (realised U10 3.01\u20133.03 m/s): PASS, ratios \u03c3y 0.93\u20131.03, \u03c3z 0.68\u20131.00; \u03c3z at 50 m \u00d70.68 is at the band edge and low in every seed (0.91, 0.77, 0.73), i.e. systematic: documented limitation (homogeneous Gaussian Langevin model vs convective, skewed turbulence). Single 3600 s runs are not converged for class A (T_E,z \u2248 500 s; one seed gives \u03c3z \u00d70.53 at 100 m). The free-h fit is degenerate once \u03c3z \u226b h (h drifts to 25 m) and is not used for pass/fail."
+ }
+}

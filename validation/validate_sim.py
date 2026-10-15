@@ -115,6 +115,36 @@ def fit_reflected(z, c, h):
     return float(p[1])
 
 
+def fit_reflected_free(z, c, h0):
+    """Ground-reflected Gaussian with free centre height: returns (σ, h)."""
+    f = lambda z, a, h, s: a * (np.exp(-0.5 * (z - h) ** 2 / s ** 2) + np.exp(-0.5 * (z + h) ** 2 / s ** 2))
+    s0, _ = moment_sigma(c, z)
+    p, _ = curve_fit(f, z, c, p0=[c.max(), h0, max(s0, 1.0)], bounds=([0, 0, 0.3], [np.inf, 80, 200]), maxfev=20000)
+    return float(p[2]), float(p[1])
+
+
+def v3_rows(fields, ys, zs, pg):
+    """σ_y: Gaussian fit to C(y, z=h).  σ_z: ground-image-aware Gaussian fits
+    (real + image term) at the fitted plume centre, centre height fixed at the
+    source height (primary) and free (reported)."""
+    kz = int(np.argmin(abs(zs - V3_SRC[2])))
+    rows = []
+    for d, C in zip(V3_X, fields):
+        sy_fit, yc = fit_gauss(ys, C[:, kz])
+        jy = int(np.argmin(abs(ys - yc)))
+        sz_fit = fit_reflected(zs, C[jy, :], V3_SRC[2])
+        sz_free, h_free = fit_reflected_free(zs, C[jy, :], V3_SRC[2])
+        sy_mom, _ = moment_sigma(C[:, kz], ys)
+        by, bz = briggs(d, pg)
+        rows.append({"x_minus_xs": d, "sigma_y_sim": sy_fit, "sigma_z_sim": sz_fit,
+                     "sigma_z_free_h": sz_free, "h_fit": h_free,
+                     "sigma_y_moment": sy_mom, "plume_center_y": yc,
+                     "sigma_y_briggs": float(by), "sigma_z_briggs": float(bz),
+                     "ratio_y": sy_fit / float(by), "ratio_z": sz_fit / float(bz),
+                     "ratio_z_free_h": sz_free / float(bz)})
+    return rows
+
+
 def slender_plume(Q, U, ys, zs, ysrc, h, sy, sz):
     Y, Z = np.meshgrid(ys, zs, indexing="ij")
     return (Q / (2 * np.pi * U * sy * sz) * np.exp(-0.5 * (Y - ysrc) ** 2 / sy ** 2)
@@ -310,7 +340,7 @@ V4_X = (25.0, 50.0, 100.0)
 V4_OFF_DY = (1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0)
 
 
-def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwargs=None):
+def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwargs=None, return_fields=False):
     """Mean plume σ_y, σ_z vs Briggs for one class (defaults otherwise)."""
     sim_kwargs = sim_kwargs or {}
     # 4096 puffs: slow near-ground puffs can outlive a short ring buffer
@@ -337,18 +367,7 @@ def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwarg
             series.append(sim.query_concentration(probes))
     fields = (acc / n[0]).reshape(len(V3_X), *pts[0][1])
 
-    kz = int(np.argmin(abs(zs - V3_SRC[2])))
-    rows = []
-    for d, C in zip(V3_X, fields):
-        sy_fit, yc = fit_gauss(ys, C[:, kz])
-        jy = int(np.argmin(abs(ys - yc)))
-        sz_fit = fit_reflected(zs, C[jy, :], V3_SRC[2])
-        sy_mom, _ = moment_sigma(C[:, kz], ys)
-        by, bz = briggs(d, pg)
-        rows.append({"x_minus_xs": d, "sigma_y_sim": sy_fit, "sigma_z_sim": sz_fit,
-                     "sigma_y_moment": sy_mom, "plume_center_y": yc,
-                     "sigma_y_briggs": float(by), "sigma_z_briggs": float(bz),
-                     "ratio_y": sy_fit / float(by), "ratio_z": sz_fit / float(bz)})
+    rows = v3_rows(fields, ys, zs, pg)
     ok = all(V3_BAND[0] <= r["ratio_y"] <= V3_BAND[1] and V3_BAND[0] <= r["ratio_z"] <= V3_BAND[1]
              for r in rows)
     ok_ow = sim.n_overwritten == 0
@@ -366,6 +385,8 @@ def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwarg
                      "lsm_TL": list(sim.lsm_TL), "class_table": {k: v for k, v in sf.PG_LSM[pg].items()}},
            "rows": rows, "n_overwritten": sim.n_overwritten, "n_emitted": sim.n_emitted,
            "pass": bool(ok and ok_ow)}
+    if return_fields:
+        return out, np.array(series), sim, fields
     return out, np.array(series), sim
 
 
