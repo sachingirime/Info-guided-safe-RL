@@ -1130,6 +1130,21 @@ class WindVectorModel:
 
         return float(eff[0]), float(eff[1]), float(eff[2]), self.shear_exponent
 
+    def set_direction(self, center_angle):
+        """Rotate the mean wind to a new direction (degrees), keeping its speed.
+        The current OU state, gust vector and gust mean rotate with it."""
+        new = math.radians(center_angle)
+        rot = new - self.center_rad
+        c, s_ = math.cos(rot), math.sin(rot)
+        R = np.array([[c, -s_, 0.0], [s_, c, 0.0], [0.0, 0.0, 1.0]])
+        self.center_rad = new
+        self.u_mean = self.base_speed * math.cos(new)
+        self.v_mean = self.base_speed * math.sin(new)
+        self._wind_mean = np.array([self.u_mean, self.v_mean, self.w_mean])
+        self._wind = R @ self._wind
+        self._gust_vec = R @ self._gust_vec
+        self._gust_mean = R @ self._gust_mean
+
     def get_angle_degrees(self):
         """Derive wind direction from current u,v components (backward compat)."""
         return math.degrees(math.atan2(self._wind[1], self._wind[0]))
@@ -1176,6 +1191,7 @@ class HybridFluidPuffSimulation:
                  shared_eddies=True,
                  drag_compensation=True,
                  class_sigma0=None,
+                 sigma_min=0.05,
                  lsm_table=None,
                  hp_gamma=HP_GAMMA):
         """
@@ -1205,6 +1221,8 @@ class HybridFluidPuffSimulation:
                             (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
+        sigma_min         : m/s, floor on the LSM velocity σ (calm wind; σ = a·U
+                            otherwise vanishes).  Affects only a·U < sigma_min.
         class_sigma0      : optional {class: σ₀ (m)} overriding sigma_0 for those
                             classes (A7).  Requires a T_L table fitted for those σ₀
                             (lsm_table; validation/fit_tl.py --class-sigma0).
@@ -1222,6 +1240,9 @@ class HybridFluidPuffSimulation:
             raise ValueError("K_rel must be >= 0")
         self.shared_eddies = bool(shared_eddies)
         self.drag_compensation = bool(drag_compensation)
+        self.sigma_min = float(sigma_min)
+        if self.sigma_min < 0:
+            raise ValueError("sigma_min must be >= 0")
         self.class_sigma0 = dict(class_sigma0) if class_sigma0 else {}
         self.lsm_table = {k.upper(): dict(v) for k, v in (lsm_table or {}).items()}
         for v in self.class_sigma0.values():
@@ -1278,7 +1299,8 @@ class HybridFluidPuffSimulation:
         self._counters=wp.zeros(2,dtype=int)   # [overwritten, exited]
         self._step_counter=0   # puff-noise stream index (reset with the sim)
 
-        self.source_pos=np.array([NX//4*DX, NY//4*DX, 2*DX],dtype=np.float32)
+        self._spheres_host=[]; self._cuboids_host=[]
+        self._source_pos=np.array([NX//4*DX, NY//4*DX, 2*DX],dtype=np.float32)
 
         self.Q = 20.0           # kg/s — methane emission rate (overridden by env)
         self.sigma_0 = 1.0      # m — initial puff standard deviation (was 2.0; 2 m
@@ -1346,6 +1368,10 @@ class HybridFluidPuffSimulation:
         if self.shear_exponent_override is not None:
             wm.shear_exponent = self.shear_exponent_override
         return wm
+
+    def set_wind_direction(self, center_angle):
+        """Rotate the mean wind direction (degrees) mid-run."""
+        self.wind_model.set_direction(center_angle)
 
     def reset(self, wind_center_angle, wind_seed, seed=None):
         """Reset all state in place (reuses GPU allocations and kernels)."""
@@ -1416,7 +1442,8 @@ class HybridFluidPuffSimulation:
     def lsm_sigma(self):
         """LSM velocity standard deviations (σ_u, σ_v, σ_w) in m/s."""
         U = self.U_src
-        return (self.a_y * U, self.a_y * U, self.a_z * U)
+        m = self.sigma_min
+        return (max(self.a_y * U, m), max(self.a_y * U, m), max(self.a_z * U, m))
 
     @property
     def lsm_TL(self):
@@ -1470,7 +1497,40 @@ class HybridFluidPuffSimulation:
             wp.launch(pressure_sor_rb, dim=shape,
                       inputs=[self.p0, self.div, self.obstacle_mask, omega, 1])
             
+    @property
+    def source_pos(self):
+        return self._source_pos
+
+    @source_pos.setter
+    def source_pos(self, p):
+        """Source position (m).  Rejected with ValueError if it lies inside an
+        obstacle; coordinates outside the domain are also rejected."""
+        p = np.asarray(p, dtype=np.float32).reshape(3)
+        if not np.all(np.isfinite(p)):
+            raise ValueError(f"source position {p} is not finite")
+        dmax = np.array([NX*DX, NY*DX, NZ*DX])
+        if np.any(p < 0) or np.any(p > dmax):
+            raise ValueError(f"source position {p} is outside the domain [0, {dmax.tolist()}]")
+        d = self.obstacle_sdf(p)
+        if d < 0:
+            raise ValueError(f"source position {p} is inside an obstacle (signed distance {d:.2f} m); "
+                             "move the source or the obstacle")
+        self._source_pos = p
+
+    def obstacle_sdf(self, p):
+        """Signed distance (m) from point p to the nearest obstacle (+inf if none)."""
+        p = np.asarray(p, float)
+        d = np.inf
+        for s in self._spheres_host:
+            d = min(d, float(np.linalg.norm(p - np.asarray(s.center, float)) - float(s.radius)))
+        for b in self._cuboids_host:
+            q = np.abs(p - np.asarray(b.center, float)) - np.asarray(b.half_extents, float)
+            d = min(d, float(np.linalg.norm(np.maximum(q, 0.0)) + min(q.max(), 0.0)))
+        return d
+
     def set_obstacles(self, spheres, cuboids):
+        self._spheres_host = list(spheres)[:_MAX_SPHERES]
+        self._cuboids_host = list(cuboids)[:_MAX_CUBOIDS]
         self.n_spheres=min(len(spheres),_MAX_SPHERES); self.n_cuboids=min(len(cuboids),_MAX_CUBOIDS)
         sc=np.zeros((_MAX_SPHERES,3),dtype=np.float32); sr=np.zeros(_MAX_SPHERES,dtype=np.float32)
         for i in range(self.n_spheres): sc[i]=spheres[i].center; sr[i]=spheres[i].radius

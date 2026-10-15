@@ -261,6 +261,7 @@ class GaussianPuffEnv(gym.Env):
     RAND_CUBOID_HE_MAX = np.array([13.0, 13.0, 30.0])
 
     OBSTACLE_SPAWN_MARGIN = 8.0
+    SOURCE_OBSTACLE_CLEARANCE = 2.0   # m, minimum source distance to any obstacle surface
 
     # ------------------------------------------------------------------
 
@@ -495,12 +496,19 @@ class GaussianPuffEnv(gym.Env):
         self._reset_fluid_sim_inplace(random_wind_angle, wind_seed, puff_seed)
         self._configure_fluid_sim()
 
-        # Source position
-        self.theta = np.array([
-            self._rng.uniform(self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0]),
-            self._rng.uniform(self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1]),
-            self._rng.uniform(self.SOURCE_Z_MIN, self.SOURCE_Z_MAX),
-        ])
+        # Source position: resampled until clear of the fixed obstacles (random
+        # obstacles are placed afterwards, ≥ 25 m away).  Pre-B2 the source could
+        # spawn inside a fixed obstacle (e.g. the sphere at (46, 92, 21)).
+        for _ in range(1000):
+            self.theta = np.array([
+                self._rng.uniform(self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0]),
+                self._rng.uniform(self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1]),
+                self._rng.uniform(self.SOURCE_Z_MIN, self.SOURCE_Z_MAX),
+            ])
+            if all(o.distance(self.theta) > self.SOURCE_OBSTACLE_CLEARANCE for o in self.FIXED_OBSTACLES):
+                break
+        else:
+            raise RuntimeError("could not place the source clear of the fixed obstacles")
         self._src_mean = self.theta.copy()
 
         # Build obstacles before warm-up so the wind and plume develop around them
@@ -621,7 +629,9 @@ class GaussianPuffEnv(gym.Env):
         new_theta[0] = np.clip(new_theta[0], self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0])
         new_theta[1] = np.clip(new_theta[1], self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1])
         new_theta[2] = np.clip(new_theta[2], self.SOURCE_Z_MIN, self.SOURCE_Z_MAX)
-        self.theta   = new_theta
+        # never step into (or within the clearance of) an obstacle: keep the old position
+        if all(o.distance(new_theta) > self.SOURCE_OBSTACLE_CLEARANCE for o in self.obstacles):
+            self.theta = new_theta
 
     # ── Concentration query (delegates to GPU) ───────────────────────────
 
