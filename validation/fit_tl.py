@@ -55,15 +55,16 @@ def model_sigma(x, a, TL, sigma0, k_rel, U=U_FIT, TL_ref_U=U_FIT):
     return np.sqrt(sigma0 ** 2 + 2 * k_rel * t + 2 * sv ** 2 * TL ** 2 * (t / TL - 1 + np.exp(-t / TL)))
 
 
-def fit(sigma0, k_rel):
+def fit(sigma0, k_rel, class_sigma0=None):
     out = {}
     for c in "ABCDEF":
-        row = {"a_y": SLOPES[c][0], "a_z": SLOPES[c][1]}
+        s0 = (class_sigma0 or {}).get(c, sigma0)
+        row = {"a_y": SLOPES[c][0], "a_z": SLOPES[c][1], "sigma0": s0}
         for ax, ref, a in (("y", BRIGGS_Y[c], SLOPES[c][0]), ("z", BRIGGS_Z[c], SLOPES[c][1])):
-            f = lambda lt: np.sum(np.log(model_sigma(X_FIT, a, np.exp(lt), sigma0, k_rel) / ref(X_FIT)) ** 2)
+            f = lambda lt: np.sum(np.log(model_sigma(X_FIT, a, np.exp(lt), s0, k_rel) / ref(X_FIT)) ** 2)
             r = minimize_scalar(f, bounds=np.log(TL_BOUNDS), method="bounded", options={"xatol": 1e-6})
             TL = float(np.exp(r.x))
-            ratio = model_sigma(X_FIT, a, TL, sigma0, k_rel) / ref(X_FIT)
+            ratio = model_sigma(X_FIT, a, TL, s0, k_rel) / ref(X_FIT)
             row[f"TL_{ax}"] = round(TL, 1)
             row[f"fit_{ax}"] = {
                 "rms_log_ratio": float(np.sqrt(np.mean(np.log(ratio) ** 2))),
@@ -78,13 +79,15 @@ def fit(sigma0, k_rel):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sigma0", type=float, default=2.0)
-    ap.add_argument("--k-rel", type=float, default=0.2)
+    ap.add_argument("--sigma0", type=float, default=1.0)
+    ap.add_argument("--k-rel", type=float, default=0.05)
+    ap.add_argument("--class-sigma0", default="", help="per-class σ0, e.g. E=0.5,F=0.3")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "tl_fit.json"))
     args = ap.parse_args()
-    table = fit(args.sigma0, args.k_rel)
+    cs0 = {kv.split("=")[0].upper(): float(kv.split("=")[1]) for kv in args.class_sigma0.split(",") if kv}
+    table = fit(args.sigma0, args.k_rel, cs0)
     res = {"U_fit": U_FIT, "x_fit_m": [25.0, 200.0], "TL_bounds_s": TL_BOUNDS,
-           "sigma0": args.sigma0, "K_rel": args.k_rel, "classes": table,
+           "sigma0": args.sigma0, "class_sigma0": cs0, "K_rel": args.k_rel, "classes": table,
            "model": "σ² = σ0² + 2 K_rel t + 2 σ_v² T_L² (t/T_L − 1 + exp(−t/T_L)), t = x/U, σ_v = a U"}
     with open(args.out, "w") as f:
         json.dump(res, f, indent=2)

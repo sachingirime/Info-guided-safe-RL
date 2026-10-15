@@ -1175,6 +1175,8 @@ class HybridFluidPuffSimulation:
                  stability_class="D",
                  shared_eddies=True,
                  drag_compensation=True,
+                 class_sigma0=None,
+                 lsm_table=None,
                  hp_gamma=HP_GAMMA):
         """
         seed              : puff RNG seed (defaults to wind_seed).
@@ -1203,6 +1205,11 @@ class HybridFluidPuffSimulation:
                             (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
+        class_sigma0      : optional {class: σ₀ (m)} overriding sigma_0 for those
+                            classes (A7).  Requires a T_L table fitted for those σ₀
+                            (lsm_table; validation/fit_tl.py --class-sigma0).
+        lsm_table         : optional {class: {"a_y", "a_z", "TL_y", "TL_z"}} overriding
+                            entries of PG_LSM.
         drag_compensation : scale the target in the drag layers so the mean
                             resolved wind follows the power law (realised 10 m
                             wind = wind_base_speed).  False: pre-A5 behaviour
@@ -1215,6 +1222,11 @@ class HybridFluidPuffSimulation:
             raise ValueError("K_rel must be >= 0")
         self.shared_eddies = bool(shared_eddies)
         self.drag_compensation = bool(drag_compensation)
+        self.class_sigma0 = dict(class_sigma0) if class_sigma0 else {}
+        self.lsm_table = {k.upper(): dict(v) for k, v in (lsm_table or {}).items()}
+        for v in self.class_sigma0.values():
+            if not v > 0:
+                raise ValueError("class_sigma0 values must be > 0")
         self.hp_gamma = float(hp_gamma)
         self._release_rng = np.random.default_rng([self.seed, 7])
         self._release_zeta = None
@@ -1431,9 +1443,12 @@ class HybridFluidPuffSimulation:
         if pg_class not in PG_LSM:
             raise ValueError(f"Unknown PG class '{pg_class}'. Use A–F.")
         self.stability_class = pg_class
-        c = PG_LSM[pg_class]
+        c = dict(PG_LSM[pg_class])
+        c.update(self.lsm_table.get(pg_class, {}))
         self.a_y, self.a_z = c["a_y"], c["a_z"]
         self.TL_y, self.TL_z = c["TL_y"], c["TL_z"]
+        if pg_class in self.class_sigma0:
+            self.sigma_0 = float(self.class_sigma0[pg_class])
         # Lapse rate (used only by buoyancy_mode="rise")
         self.LAPSE_RATE = PG_LAPSE_RATES[pg_class]
         # Shear exponent for power-law vertical wind profile
