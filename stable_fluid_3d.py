@@ -943,6 +943,11 @@ def query_sensor_hybrid(
     use_los: int,
 ):
     s=wp.tid(); p=sensor_pos[s]
+    # Points below ground or outside the domain read 0 (no gas is simulated
+    # there; the image term would otherwise mirror the plume below z = 0).
+    if p[2] < 0.0 or p[0] < 0.0 or p[1] < 0.0 or p[0] > float(WIND_NX)*dx or p[1] > float(WIND_NY)*dx or p[2] > float(WIND_NZ)*dx:
+        concentration[s]=0.0
+        return
     c_grid=float(0.0)
     if rho_scale > 0.0:   # legacy grid gas only
         g=world_to_grid(p,dx)
@@ -1724,6 +1729,8 @@ class HybridFluidPuffSimulation:
         ])
 
     def query_concentration(self, sensor_positions_np):
+        """Concentration (kg/m³) at each sensor position.  Returns 0 below
+        ground, outside the domain and (with use_los) inside obstacles."""
         M=sensor_positions_np.shape[0]; sensors=wp.array(sensor_positions_np,dtype=wp.vec3)
         conc=wp.zeros(M,dtype=float); n=min(self.next_puff_idx,self.max_puffs)
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
