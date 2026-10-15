@@ -752,10 +752,29 @@ def reflect_puffs_at_boundary(
     domain_max_x:float, domain_max_y:float, domain_max_z:float,
     counters: wp.array(dtype=int),
     puff_mass: wp.array(dtype=float), mass_counters: wp.array(dtype=float),
+    closed: int,
 ):
     i=wp.tid()
     if puff_active[i]==0: return
     p=puff_pos[i]; px=p[0]; py=p[1]; pz=p[2]
+    if closed != 0:
+        # Closed box (tests only): reflect position and turbulent velocity at
+        # every face, as at the ground.
+        v=puff_vel[i]; vx=v[0]; vy=v[1]; vz=v[2]
+        if px<0.0:
+            px=-px; vx=-vx
+        if px>domain_max_x:
+            px=2.0*domain_max_x-px; vx=-vx
+        if py<0.0:
+            py=-py; vy=-vy
+        if py>domain_max_y:
+            py=2.0*domain_max_y-py; vy=-vy
+        if pz<0.0:
+            pz=-pz; vz=-vz
+        if pz>domain_max_z:
+            pz=2.0*domain_max_z-pz; vz=-vz
+        puff_pos[i]=wp.vec3(px,py,pz); puff_vel[i]=wp.vec3(vx,vy,vz)
+        return
     # Open faces (x, y, z_top): deactivate puffs that leave the domain
     if px<0.0 or px>domain_max_x or py<0.0 or py>domain_max_y or pz>domain_max_z:
         puff_active[i]=0
@@ -1202,6 +1221,7 @@ class HybridFluidPuffSimulation:
                  class_sigma0=None,
                  sigma_min=0.05,
                  fps=30,
+                 closed_domain=False,
                  lsm_table=None,
                  hp_gamma=HP_GAMMA):
         """
@@ -1232,6 +1252,8 @@ class HybridFluidPuffSimulation:
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
         fps               : simulation steps per second (Δt = 1/fps); default 30.
+        closed_domain     : reflect puffs at all faces instead of removing them
+                            (well-mixed test only).
         sigma_min         : m/s, floor on the LSM velocity σ (calm wind; σ = a·U
                             otherwise vanishes).  Affects only a·U < sigma_min.
         class_sigma0      : optional {class: σ₀ (m)} overriding sigma_0 for those
@@ -1285,6 +1307,7 @@ class HybridFluidPuffSimulation:
         self.wind_angle_range = wind_angle_range
         self.wind_base_speed = wind_base_speed
 
+        self.closed_domain = bool(closed_domain)
         if not fps > 0:
             raise ValueError("fps must be > 0")
         self.fps=float(fps); self.frame_dt=1.0/self.fps; self.sim_dt=self.frame_dt; self.sim_time=0.0
@@ -1753,6 +1776,7 @@ class HybridFluidPuffSimulation:
             self.puff_pos,self.puff_active,self.puff_vel,
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
             self._counters, self.puff_mass, self._mass_counters,
+            1 if self.closed_domain else 0,
         ])
 
     def _obstacle_args(self):
