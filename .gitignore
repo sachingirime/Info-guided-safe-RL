@@ -54,3 +54,5 @@ paper_results/
 
 # A1 per-seed fields (large)
 validation/a1/
+validation/a4/
+tests/report.json
