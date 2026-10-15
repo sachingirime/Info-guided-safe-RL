@@ -751,6 +751,7 @@ def reflect_puffs_at_boundary(
     puff_vel: wp.array(dtype=wp.vec3),
     domain_max_x:float, domain_max_y:float, domain_max_z:float,
     counters: wp.array(dtype=int),
+    puff_mass: wp.array(dtype=float), mass_counters: wp.array(dtype=float),
 ):
     i=wp.tid()
     if puff_active[i]==0: return
@@ -759,6 +760,7 @@ def reflect_puffs_at_boundary(
     if px<0.0 or px>domain_max_x or py<0.0 or py>domain_max_y or pz>domain_max_z:
         puff_active[i]=0
         wp.atomic_add(counters, COUNTER_EXITED, 1)
+        wp.atomic_add(mass_counters, COUNTER_EXITED, puff_mass[i])
         return
     # Ground (z=0): solid wall — reflect position and the vertical
     # turbulent velocity (perfect reflection keeps the LSM well mixed)
@@ -782,11 +784,13 @@ def emit_puff_kernel(
     idx: int, pos: wp.vec3, emit_time: float, mass: float,
     counters: wp.array(dtype=int),
     vel: wp.vec3,
+    mass_counters: wp.array(dtype=float),
 ):
     # A still-active puff in this ring-buffer slot means max_puffs is too
     # small and its mass is lost: count it.
     if puff_active[idx] == 1:
         wp.atomic_add(counters, COUNTER_OVERWRITTEN, 1)
+        wp.atomic_add(mass_counters, COUNTER_OVERWRITTEN, puff_mass[idx])
     puff_pos[idx] = pos
     puff_active[idx] = 1
     puff_emit_time[idx] = emit_time
@@ -1306,6 +1310,9 @@ class HybridFluidPuffSimulation:
         self._next_emit_time=0.0   # emission schedule: t_n = n·emit_interval
         self.n_emitted=0
         self._counters=wp.zeros(2,dtype=int)   # [overwritten, exited]
+        self._mass_counters=wp.zeros(2,dtype=float)   # kg [overwritten, exited]
+        self.mass_emitted=0.0                  # kg released (host, float64)
+        self._overflow_warned=False
         self._step_counter=0   # puff-noise stream index (reset with the sim)
 
         self._spheres_host=[]; self._cuboids_host=[]
@@ -1389,6 +1396,7 @@ class HybridFluidPuffSimulation:
             a.zero_()
         self.puff_pos.zero_(); self.puff_active.zero_(); self.puff_emit_time.zero_()
         self.puff_mass.zero_(); self.puff_vel.zero_(); self._counters.zero_()
+        self._mass_counters.zero_(); self.mass_emitted = 0.0; self._overflow_warned = False
         self.next_puff_idx = 0
         self._next_emit_time = 0.0
         self.n_emitted = 0
@@ -1572,6 +1580,38 @@ class HybridFluidPuffSimulation:
         return int(self._counters.numpy()[0])
 
     @property
+    def mass_overwritten(self):
+        """kg of puffs overwritten while active (lost)."""
+        return float(self._mass_counters.numpy()[0])
+
+    @property
+    def mass_exited(self):
+        """kg of puffs removed at the open faces."""
+        return float(self._mass_counters.numpy()[1])
+
+    @property
+    def mass_in_domain(self):
+        act = self.puff_active.numpy() == 1
+        return float(self.puff_mass.numpy()[act].astype(np.float64).sum())
+
+    def _check_overflow(self):
+        """Warn once if the ring buffer overwrote active puffs, naming the
+        max_puffs (env N_PUFFS) needed: 1.25 × oldest active age / emit_interval."""
+        if self._overflow_warned:
+            return
+        n = self.n_overwritten
+        if n == 0:
+            return
+        act = self.puff_active.numpy() == 1
+        age = float((self.sim_time - self.puff_emit_time.numpy()[act]).max()) if act.any() else 0.0
+        need = int(math.ceil(1.25 * max(age, self.max_puffs * self.emit_interval) / self.emit_interval))
+        import warnings
+        warnings.warn(f"puff ring buffer overflow: {n} active puffs overwritten ({self.mass_overwritten:.3g} kg lost); "
+                      f"oldest active puff is {age:.0f} s old. Use max_puffs (env N_PUFFS) >= {need}.",
+                      RuntimeWarning, stacklevel=2)
+        self._overflow_warned = True
+
+    @property
     def n_exited(self):
         """Puffs removed at the open domain faces."""
         return int(self._counters.numpy()[1])
@@ -1595,9 +1635,10 @@ class HybridFluidPuffSimulation:
                     self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
                     self.puff_vel,
                     idx, wp.vec3(*[float(v) for v in pos]), float(self.sim_time), mass,
-                    self._counters, self._release_velocity()])
+                    self._counters, self._release_velocity(), self._mass_counters])
                 self.next_puff_idx += 1
                 self.n_emitted += 1
+                self.mass_emitted += mass
             self._next_emit_time += self.emit_interval
 
     def _release_velocity(self):
@@ -1711,7 +1752,7 @@ class HybridFluidPuffSimulation:
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
             self.puff_pos,self.puff_active,self.puff_vel,
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
-            self._counters,
+            self._counters, self.puff_mass, self._mass_counters,
         ])
 
     def _obstacle_args(self):
@@ -1749,6 +1790,7 @@ class HybridFluidPuffSimulation:
         self.emit_puff(); self.step_wind()
         if self.sim_time + 1e-9 >= self._next_U_update:
             self._update_U_src(); self._next_U_update += self.U_SRC_EVERY
+            self._check_overflow()
         self.step_puffs(); self.sim_time+=self.sim_dt
 
     def inject_puffs(self, positions, ages=None, masses=1.0, velocities=None):
