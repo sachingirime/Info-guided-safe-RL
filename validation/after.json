@@ -1,0 +1,17 @@
+{
+  "sim_time": 119.99999999999575,
+  "grid_share": 0.0,
+  "n_cells_above_thresh": 1264,
+  "w_max_source": 0.029544955119490623,
+  "w_max_source_tmax": 0.12966322898864746,
+  "median_puff_height": 8.80849552154541,
+  "source_z": 10.0,
+  "n_active_puffs": 594,
+  "rho_max": 0.0,
+  "divergence_residual": 0.001662129070609808,
+  "sor_iters": 25,
+  "n_emitted": 600,
+  "n_overwritten": 0,
+  "n_exited": 6,
+  "code": "sim-fix"
+}

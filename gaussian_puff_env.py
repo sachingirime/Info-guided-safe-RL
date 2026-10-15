@@ -2,10 +2,10 @@
 gaussian_puff_env.py — Gymnasium RL environment for drone-based gas source localisation.
 
 Wraps a GPU-accelerated 3D Stable Fluids + Gaussian Puff simulation.
-State:  s = [p_norm(3), w_norm(3), c_soft(1), c_detect(1), ζ⁻¹(1)] = 9D,
-        all channels in [0, 1]; concentration channels use soft log1p/sigmoid
-        (no hard gate — sub-threshold traces are visible to the network)
-Action: velocity command in R³, clipped to [-V_MAX, V_MAX]
+State:  s = [p_norm(3), w_norm(3), c_soft(1), c_detect(1), ζ⁻¹(1), d_mle(1)] = 10D
+        (+ info_map_size channels), all in [0, 1]; concentration channels use
+        soft log1p/sigmoid (no hard gate — sub-threshold traces are visible)
+Action: velocity command in R³, clipped to [-V_MAX, V_MAX] (V_MAX = 10 m/s)
 """
 
 import numpy as np
@@ -19,8 +19,7 @@ import warp as wp
 from stable_fluid_3d import (
     HybridFluidPuffSimulation,
     NX, NY, NZ, DX as FLUID_DX,
-    PASQUILL_GIFFORD_KD,
-    PASQUILL_GIFFORD_LANGEVIN,
+    PG_LSM,
 )
 
 
@@ -77,7 +76,7 @@ class GaussianPuffEnv(gym.Env):
     3D Gaussian Puff Environment backed by GPU Stable Fluids simulation
     with full 360-degree atmospheric wind model.
 
-    Observation (9D, all normalised to [0, 1]):
+    Observation (10D + info_map_size, all normalised to [0, 1]):
         0-2  p_norm      position / domain_max
         3-5  w_norm       (w / WIND_MAX + 1) / 2  — normalised wind vector
         6    c_norm       soft log1p concentration (no hard gate; sub-threshold
@@ -85,6 +84,9 @@ class GaussianPuffEnv(gym.Env):
         7    c_detected   soft sigmoid detection confidence (0.5 at noise floor;
                           continuous gradient replaces binary 0/1 flag)
         8    ζ_inv        EMGR observability metric (injected by training loop)
+        9    d_mle        ‖p − θ̂_MLE‖ / ‖domain‖ (θ̂ injected via set_theta_hat;
+                          1.0 until set).  Not a concentration.
+        10…  info map     optional EMGR information-map channels
 
     Phase behaviour (soft transitions via c_detected sigmoid):
         c_detected ≈ 0 → exploration.  Wind vector is the primary cue;
@@ -140,9 +142,13 @@ class GaussianPuffEnv(gym.Env):
     Q_INIT      = 5.0       # kg/s — methane mass emission rate
     Q_GROWTH    = 0.0       # kg/s² — emission rate increase over time (0 = constant)
     PUFF_PERIOD = 0.2       # s — interval between puff emissions
-    N_PUFFS     = 1024      # max Lagrangian puff particles
+    N_PUFFS     = 2560      # max Lagrangian puff particles = 512 s of puffs.  Was 1024 (slow
+                            # near-ground puffs outlive 205 s: 20–213 overwritten per 200 s
+                            # episode), then 2048 (a 1 h run overwrote 24 puffs; the overflow
+                            # warning asked for ≥ 2560).  See sim.n_overwritten.
 
-    SIGMA_0 = 2.0           # m — initial puff standard deviation
+    SIGMA_0 = 1.0           # m — initial puff standard deviation (was 2.0: larger than
+                            # Briggs D σ_z at 25 m; LSM T_L table is fitted for σ₀ = 1 m)
 
     # ------------------------------------------------------------------
     # Mobile source — exact OU
@@ -167,7 +173,7 @@ class GaussianPuffEnv(gym.Env):
     LOG_C_EPS        = 1e-10          # guard against log(0)
     CONC_NOISE_FLOOR = 3e-4           # 3 × SIGMA_E — detection threshold (kg/m³)
     LOG_C_SIG_MIN    = np.log(3e-4)   # = -8.11  (detection edge)
-    LOG_C_SIG_MAX    = np.log(5e-3)   # = -2.30  (near-source peak)
+    LOG_C_SIG_MAX    = np.log(1e-1)   # = -2.30  (near-source peak; unused, kept = log(CONC_SIG_CEIL))
 
     # Soft log1p concentration normalisation (replaces hard-gated log mapping)
     #   c_soft = log(1 + c_signal/CONC_LOG_SCALE) / log(1 + C_SIG_CEIL/CONC_LOG_SCALE)
@@ -178,7 +184,10 @@ class GaussianPuffEnv(gym.Env):
     #     moderate    (1e-2)          → c_soft ≈ 0.67
     #     near-source (1e-1)          → c_soft = 1.00
     CONC_LOG_SCALE     = 1e-4         # log1p sensitivity scale (≈ sensor σ_e)
-    CONC_SIG_CEIL      = 5e-3         # kg/m³ — normalisation ceiling
+    CONC_SIG_CEIL      = 1e-1         # kg/m³ — normalisation ceiling (was 5e-3, tuned for the
+                                   # pre-fix plume; the calibrated plume's detected C has median
+                                   # 4–7e-3 and p99 0.22–0.25, so 5e-3 saturated c_norm for
+                                   # 41–55% of detections.  1e-1 also matches the table above.)
     DETECT_TEMPERATURE = 1e-4         # kg/m³ — sigmoid width for soft detection
 
     # ------------------------------------------------------------------
@@ -202,10 +211,26 @@ class GaussianPuffEnv(gym.Env):
     WIND_MAX = 5.0  # m/s — symmetric clamp for each component
 
     # ------------------------------------------------------------------
+    # Anemometer turbulence: the resolved wind is smooth, so the observed
+    # wind adds OU noise with the class LSM intensities (σ_u, σ_v, σ_w of
+    # the sim) and a short correlation time.  Off with wind_noise=False.
+    # ------------------------------------------------------------------
+    WIND_NOISE_TAU = 1.0    # s
+
+    # ------------------------------------------------------------------
     # Reward / convergence
     # ------------------------------------------------------------------
     LAMBDA_CTRL   = 0.01
-    CONVERGE_DIST = 0.0
+    CONVERGE_DIST = 0.0     # RL setting: never terminates on distance.
+                            # Planner runs use their own convergence radius.
+
+    # ------------------------------------------------------------------
+    # Warm-up: sim time advanced in reset() so episodes start with a
+    # developed plume (pre-fix: 10 frames ≈ 0.33 s).
+    # ------------------------------------------------------------------
+    WARMUP_S = 120.0        # was 60 s: at the env wind (1.5 m/s at 10 m, slower near the
+                            # ground) the plume reached only 69–90 m in 5 of 10 episodes;
+                            # 120 s lets it reach ≥ 100 m downwind (B11.38)
 
     # ------------------------------------------------------------------
     # Fixed obstacles
@@ -239,13 +264,42 @@ class GaussianPuffEnv(gym.Env):
     RAND_CUBOID_HE_MAX = np.array([13.0, 13.0, 30.0])
 
     OBSTACLE_SPAWN_MARGIN = 8.0
+    SOURCE_OBSTACLE_CLEARANCE = 2.0   # m, minimum source distance to any obstacle surface
+
+    # Drone spawn: "random" = uniform in the domain, ≥ DRONE_SOURCE_MIN_DIST from the
+    # source (horizontal) and ≥ 5 m from obstacles.  "corner" = the fixed point
+    # (230, 115, SPAWN_Z_MIN + 5) used by every pre-B11 episode: the old loop
+    # rejected points inside SOURCE_XY window ± 12 m, which after the window was
+    # widened covered the whole spawn area, so it always fell back to the corner.
+    DRONE_SPAWN = "random"
+    DRONE_SOURCE_MIN_DIST = 30.0
 
     # ------------------------------------------------------------------
 
     def __init__(self, seed: int = None, source_mobile: bool = False,
                  stability_class: str = "D", info_map_size: int = 0,
-                 source_xy_min=None, source_xy_max=None, source_z_max=None):
+                 source_xy_min=None, source_xy_max=None, source_z_max=None,
+                 warmup_s: float = None, wind_noise: bool = True,
+                 wind_noise_tau: float = None, **sim_kwargs):
+        """
+        sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
+        K_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
+        enable_turbulence, enable_gusts, steady_wind, shear_exponent, use_los).
+        """
         super().__init__()
+        self._sim_kwargs = dict(sim_kwargs)
+        grid = np.array([NX, NY, NZ]) * FLUID_DX
+        if not np.allclose(self.DOMAIN_MAX, grid) or not np.allclose(self.DOMAIN_MIN, 0.0):
+            raise ValueError(f"DOMAIN {self.DOMAIN_MIN}–{self.DOMAIN_MAX} does not match the fluid grid {grid}")
+        if warmup_s is not None:
+            self.WARMUP_S = float(warmup_s)
+        if self.N_PUFFS * self.PUFF_PERIOD < self.WARMUP_S:
+            raise ValueError(f"N_PUFFS={self.N_PUFFS} holds only {self.N_PUFFS * self.PUFF_PERIOD:.0f} s of puffs, "
+                             f"less than WARMUP_S={self.WARMUP_S:.0f} s")
+        self.wind_noise = bool(wind_noise)
+        if wind_noise_tau is not None:
+            self.WIND_NOISE_TAU = float(wind_noise_tau)
+        self._wind_noise_state = np.zeros(3)
 
         self.source_mobile = source_mobile
         self.stability_class = stability_class
@@ -302,6 +356,7 @@ class GaussianPuffEnv(gym.Env):
             wind_base_speed=self.WIND_BASE_SPEED,
             max_puffs=self.N_PUFFS,
             wind_seed=wind_seed,
+            **self._sim_kwargs,
         )
 
         self._configure_fluid_sim()
@@ -324,46 +379,9 @@ class GaussianPuffEnv(gym.Env):
 
     # ------------------------------------------------------------------
 
-    def _reset_fluid_sim_inplace(self, wind_angle: float, wind_seed: int):
+    def _reset_fluid_sim_inplace(self, wind_angle: float, wind_seed: int, puff_seed: int):
         """Reset simulation state in-place (reuses GPU allocations + kernels)."""
-        sim = self.fluid_sim
-
-        # Zero all field arrays
-        sim.u0.zero_()
-        sim.u1.zero_()
-        sim.p0.zero_()
-        sim.div.zero_()
-        sim.rho0.zero_()
-        sim.rho1.zero_()
-        sim.rho_tmp.zero_()
-        sim.conc_grid.zero_()
-
-        # Zero puff pool
-        sim.puff_pos     = wp.zeros(sim.max_puffs, dtype=wp.vec3)
-        sim.puff_active  = wp.zeros(sim.max_puffs, dtype=int)
-        sim.puff_emit_time = wp.zeros(sim.max_puffs, dtype=float)
-        sim.next_puff_idx   = 0
-        sim.last_emit_time  = -999.0
-
-        # Reset time
-        sim.sim_time = 0.0
-
-        # Reset spatial turbulence field — warm-start from OU stationary dist
-        import math as _m
-        _turb_stat_std = sim._turb_ou_sigma / _m.sqrt(2.0 * sim._turb_ou_theta)
-        sim._turb_np = (_turb_stat_std * sim._rng.standard_normal(
-            (*sim._turb_shape, 3))).astype(np.float32)
-        wp.copy(sim.turb_field, wp.array(sim._turb_np, dtype=wp.vec3))
-        sim._rng = np.random.default_rng(wind_seed)
-
-        # Re-initialise wind model with new angle and seed
-        from stable_fluid_3d import WindVectorModel
-        sim.wind_model = WindVectorModel(
-            center_angle=wind_angle,
-            angle_range=self.WIND_ANGLE_RANGE,
-            base_speed=self.WIND_BASE_SPEED,
-            seed=wind_seed,
-        )
+        self.fluid_sim.reset(wind_angle, wind_seed, seed=puff_seed)
 
     # ------------------------------------------------------------------
 
@@ -381,20 +399,18 @@ class GaussianPuffEnv(gym.Env):
         u_np = self.fluid_sim.u0.numpy()
         dx   = self.fluid_sim.dx
 
-        gx = world_pos[0] / dx
-        gy = world_pos[1] / dx
-        gz = world_pos[2] / dx
-
         nx, ny, nz = u_np.shape[:3]
 
-        lx = int(np.floor(gx))
-        ly = int(np.floor(gy))
-        lz = int(np.floor(gz))
-        tx = gx - lx; ty = gy - ly; tz = gz - lz
+        # Cell (i,j,k) holds the value at its centre: grid coord = p/dx - 0.5,
+        # clamped to the grid before splitting into cell + fraction.
+        gx = float(np.clip(world_pos[0] / dx - 0.5, 0.0, nx - 1))
+        gy = float(np.clip(world_pos[1] / dx - 0.5, 0.0, ny - 1))
+        gz = float(np.clip(world_pos[2] / dx - 0.5, 0.0, nz - 1))
 
-        lx = np.clip(lx, 0, nx - 2)
-        ly = np.clip(ly, 0, ny - 2)
-        lz = np.clip(lz, 0, nz - 2)
+        lx = min(int(np.floor(gx)), nx - 2)
+        ly = min(int(np.floor(gy)), ny - 2)
+        lz = min(int(np.floor(gz)), nz - 2)
+        tx = gx - lx; ty = gy - ly; tz = gz - lz
 
         c000 = u_np[lx,   ly,   lz]
         c100 = u_np[lx+1, ly,   lz]
@@ -412,6 +428,17 @@ class GaussianPuffEnv(gym.Env):
         c0  = c00*(1-ty)  + c10*ty
         c1  = c01*(1-ty)  + c11*ty
         return (c0*(1-tz) + c1*tz).astype(np.float64)
+
+    def _observed_wind(self) -> np.ndarray:
+        """Anemometer reading: resolved wind at the drone + OU turbulence."""
+        w = self._sample_wind_at(self.p)
+        if not self.wind_noise:
+            return w
+        sig = np.array(self.fluid_sim.lsm_sigma)
+        a = np.exp(-self.DT / self.WIND_NOISE_TAU)
+        self._wind_noise_state = (a * self._wind_noise_state
+                                  + sig * np.sqrt(1.0 - a * a) * self._rng.standard_normal(3))
+        return w + self._wind_noise_state
 
     # ── Obstacle generation ───────────────────────────────────────────────
 
@@ -476,64 +503,56 @@ class GaussianPuffEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
-        # Derive wind seed from env rng for reproducibility
+        # Derive wind and puff-noise seeds from the env rng: every episode
+        # differs, and a fixed reset seed reproduces the episode exactly.
         wind_seed = int(self._rng.integers(0, 2**31))
         random_wind_angle = float(self._rng.uniform(0.0, 360.0))
+        puff_seed = int(self._rng.integers(0, 2**31))
 
         # Reset fluid sim in-place (reuses GPU allocations)
-        self._reset_fluid_sim_inplace(random_wind_angle, wind_seed)
+        self._reset_fluid_sim_inplace(random_wind_angle, wind_seed, puff_seed)
         self._configure_fluid_sim()
 
-        # Source position
-        self.theta = np.array([
-            self._rng.uniform(self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0]),
-            self._rng.uniform(self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1]),
-            self._rng.uniform(self.SOURCE_Z_MIN, self.SOURCE_Z_MAX),
-        ])
+        # Source position: resampled until clear of the fixed obstacles (random
+        # obstacles are placed afterwards, ≥ 25 m away).  Pre-B2 the source could
+        # spawn inside a fixed obstacle (e.g. the sphere at (46, 92, 21)).
+        for _ in range(1000):
+            self.theta = np.array([
+                self._rng.uniform(self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0]),
+                self._rng.uniform(self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1]),
+                self._rng.uniform(self.SOURCE_Z_MIN, self.SOURCE_Z_MAX),
+            ])
+            if all(o.distance(self.theta) > self.SOURCE_OBSTACLE_CLEARANCE for o in self.FIXED_OBSTACLES):
+                break
+        else:
+            raise RuntimeError("could not place the source clear of the fixed obstacles")
         self._src_mean = self.theta.copy()
 
-        # Set source position before warmup so puffs emit from the right place
-        self.fluid_sim.source_pos = self.theta.astype(np.float32)
-
-        # Warm up
-        for _ in range(10):
-            self.fluid_sim.step()
-
-        # Build obstacles
+        # Build obstacles before warm-up so the wind and plume develop around them
         self.obstacles = self._sample_obstacles()
         spheres = [o for o in self.obstacles if isinstance(o, SphereObstacle)]
         cuboids = [o for o in self.obstacles if isinstance(o, CuboidObstacle)]
         self.fluid_sim.set_obstacles(spheres, cuboids)
 
-        # Drone spawn
-        for _ in range(2000):
-            xy = self._rng.uniform(
-                self.DOMAIN_MIN[:2] + 5.0,
-                self.DOMAIN_MAX[:2] - 5.0,
-            )
-            z  = self._rng.uniform(self.SPAWN_Z_MIN, self.SPAWN_Z_MAX)
-            p  = np.array([xy[0], xy[1], z])
+        # Set source position before warmup so puffs emit from the right place
+        self.fluid_sim.source_pos = self.theta.astype(np.float32)
 
-            src_xy_dist = np.linalg.norm(p[:2] - self.theta[:2])
-            in_cluster  = (
-                self.SOURCE_XY_MIN[0] - 12 <= p[0] <= self.SOURCE_XY_MAX[0] + 12
-                and self.SOURCE_XY_MIN[1] - 12 <= p[1] <= self.SOURCE_XY_MAX[1] + 12
-            )
-            if (src_xy_dist > 30.0
-                    and not in_cluster
-                    and not self._in_collision(p)
-                    and self.nearest_obstacle_distance(p) > 5.0):
-                self.p = p
-                break
-        else:
-            # Fallback position (verified >60m from all fixed obstacles)
-            self.p = np.array([230.0, 115.0, self.SPAWN_Z_MIN + 5.0])
+        # Warm up: WARMUP_S of sim time so the plume is developed at t = 0
+        for _ in range(int(round(self.WARMUP_S / self.fluid_sim.frame_dt))):
+            self.fluid_sim.step()
+        self._sim_t0 = self.fluid_sim.sim_time     # sim time at env t = 0
+
+        # Drone spawn
+        self.p = self._spawn_drone()
 
         self.v = np.zeros(3, dtype=np.float64)
-        self.w = self._sample_wind_at(self.p)
+        self._wind_noise_state = (np.array(self.fluid_sim.lsm_sigma) * self._rng.standard_normal(3)
+                                  if self.wind_noise else np.zeros(3))
+        self.w = self._observed_wind()
         self.t = 0.0
         self.step_count = 0
         self._zeta_inv_norm = 0.0    # reset EMGR metric each episode
+        self._theta_hat = None       # MLE estimate from the previous episode must not leak
         self._info_map[:] = 0.0      # reset information map
 
         self._c_true = self.concentration(self.p)
@@ -568,14 +587,19 @@ class GaussianPuffEnv(gym.Env):
             self.fluid_sim.source_pos = self.theta.astype(np.float32)
 
         # Advance fluid sim
-        n_substeps = max(1, int(round(self.DT / self.fluid_sim.frame_dt)))
-        for _ in range(n_substeps):
-            self.fluid_sim.step()
+        # Step the sim until it reaches the env time of this step (to within
+        # half a frame).  Pre-B5 the env ran round(DT/frame_dt) frames per step,
+        # which drifts when DT/frame_dt is not an integer (25 fps: 0.08 s per
+        # 0.1 s step).
+        sim = self.fluid_sim
+        target = self._sim_t0 + (self.step_count + 1) * self.DT
+        while sim.sim_time + 0.5 * sim.frame_dt < target:
+            sim.step()
 
         self.t          += self.DT
         self.step_count += 1
 
-        self.w       = self._sample_wind_at(self.p)
+        self.w       = self._observed_wind()
         self._c_true = self.concentration(self.p)
         self._y_sensor = self._get_sensor_reading()
 
@@ -598,6 +622,32 @@ class GaussianPuffEnv(gym.Env):
 
         return self._get_obs().astype(np.float32), reward, terminated, truncated, info
 
+    def _drone_spawn_ok(self, p):
+        return (np.linalg.norm(p[:2] - self.theta[:2]) > self.DRONE_SOURCE_MIN_DIST
+                and self.nearest_obstacle_distance(p) > 5.0)
+
+    def _spawn_drone(self):
+        if self.DRONE_SPAWN == "corner":
+            corners = [np.array([230.0, 115.0, self.SPAWN_Z_MIN + 5.0]), np.array([26.0, 13.0, self.SPAWN_Z_MIN + 5.0]),
+                       np.array([230.0, 13.0, self.SPAWN_Z_MIN + 5.0]), np.array([26.0, 115.0, self.SPAWN_Z_MIN + 5.0])]
+            for p in corners:
+                if self._drone_spawn_ok(p):
+                    return p
+        elif self.DRONE_SPAWN != "random":
+            raise ValueError(f"DRONE_SPAWN must be 'random' or 'corner' (got {self.DRONE_SPAWN!r})")
+        for _ in range(2000):
+            xy = self._rng.uniform(self.DOMAIN_MIN[:2] + 5.0, self.DOMAIN_MAX[:2] - 5.0)
+            p = np.array([xy[0], xy[1], self._rng.uniform(self.SPAWN_Z_MIN, self.SPAWN_Z_MAX)])
+            if self._drone_spawn_ok(p):
+                return p
+        # deterministic grid search as a last resort
+        for x in np.linspace(10, self.DOMAIN_MAX[0] - 10, 25):
+            for y in np.linspace(10, self.DOMAIN_MAX[1] - 10, 13):
+                p = np.array([x, y, self.SPAWN_Z_MIN + 5.0])
+                if self._drone_spawn_ok(p):
+                    return p
+        raise RuntimeError("no valid drone spawn position")
+
     # ── Source mobility (OU process) ─────────────────────────────────────
 
     def _step_source(self):
@@ -608,7 +658,9 @@ class GaussianPuffEnv(gym.Env):
         new_theta[0] = np.clip(new_theta[0], self.SOURCE_XY_MIN[0], self.SOURCE_XY_MAX[0])
         new_theta[1] = np.clip(new_theta[1], self.SOURCE_XY_MIN[1], self.SOURCE_XY_MAX[1])
         new_theta[2] = np.clip(new_theta[2], self.SOURCE_Z_MIN, self.SOURCE_Z_MAX)
-        self.theta   = new_theta
+        # never step into (or within the clearance of) an obstacle: keep the old position
+        if all(o.distance(new_theta) > self.SOURCE_OBSTACLE_CLEARANCE for o in self.obstacles):
+            self.theta = new_theta
 
     # ── Concentration query (delegates to GPU) ───────────────────────────
 

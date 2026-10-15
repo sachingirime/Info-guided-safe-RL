@@ -51,3 +51,10 @@ eval_results/
 planner_baseline/
 figures/
 paper_results/
+
+# A1 per-seed fields (large)
+validation/a1/
+validation/a4/
+tests/report.json
+validation/a6/
+validation/a7/
