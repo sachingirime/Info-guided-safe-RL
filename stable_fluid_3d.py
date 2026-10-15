@@ -687,6 +687,7 @@ def apply_global_wind(
     turb_field: wp.array3d(dtype=wp.vec3),
     mask: wp.array3d(dtype=int),
     z_ref:float, dx:float,
+    drag_rate:float, n_drag:int, drag_comp:int,
 ):
     """Newtonian relaxation (nudging) toward target wind profile.
 
@@ -703,6 +704,16 @@ def apply_global_wind(
     # normalised by the domain top.)
     z=(float(k)+0.5)*dx
     shear=wp.pow(wp.max(z,0.5)/z_ref,shear_exp)
+    # Drag compensation: relaxation (rate n = αΔt per step) followed by the
+    # ground-drag factor d_k gives a steady state u/u_tgt = d·n/(1 − d(1 − n))
+    # (0.79 at the 10 m cell).  Dividing the target by this factor in the drag
+    # layers makes the mean resolved profile follow the power law, so the
+    # realised 10 m wind equals the requested base speed; drag still damps
+    # deviations from the target near the ground.
+    if drag_comp != 0 and k < n_drag:
+        nn=wp.min(alpha*dt,1.0)
+        d=wp.exp(-drag_rate*dt*(1.0-float(k)/float(n_drag)))
+        shear=shear*(1.0-d*(1.0-nn))/(d*nn)
     # Map fine grid coords to coarse turbulence grid coords
     tx = (float(i) + 0.5) / float(WIND_NX) * float(TURB_NX - 1)
     ty = (float(j) + 0.5) / float(WIND_NY) * float(TURB_NY - 1)
@@ -1035,6 +1046,19 @@ class WindVectorModel:
         # Exp sample every frame and compared it to the timer, so gusts fired
         # ~1 s apart instead of ~gust_interval.)
         self._gust_wait = self.rng.exponential(gust_interval) if self.enable_gusts else math.inf
+        # Gusts only add along-wind speed, so their time mean is non-zero:
+        #   duty·E[strength]·E[envelope]·E[cos(direction offset)]
+        #   = D/(I + D) · mean(range) · 0.8 · sin(r)/r   (≈ 0.09 m/s for the defaults).
+        # It is subtracted in get_wind() so gusts are zero-mean fluctuations and
+        # the time-mean wind equals base_speed (A5).
+        if self.enable_gusts:
+            duty = gust_duration / (gust_interval + gust_duration)
+            r = self.angle_range_rad
+            along = math.sin(r) / r if r > 0 else 1.0
+            g = duty * 0.5 * (gust_strength_range[0] + gust_strength_range[1]) * 0.8 * along
+            self._gust_mean = np.array([g * math.cos(self.center_rad), g * math.sin(self.center_rad), 0.0])
+        else:
+            self._gust_mean = np.zeros(3)
 
     def step(self, dt):
         # OU update for each wind component
@@ -1097,7 +1121,7 @@ class WindVectorModel:
 
     def get_wind(self, t):
         turb = np.sum(self._turb_states, axis=0)
-        eff = self._wind + turb
+        eff = self._wind + turb - self._gust_mean
 
         if self._gust_active:
             frac = self._gust_elapsed / self.gust_duration
@@ -1125,6 +1149,8 @@ class HybridFluidPuffSimulation:
     RHO_DECAY_RATE = 0.0008   # 1/s — reduced so grid density persists downstream
     RHO_SCALE      = 1e-3
 
+    N_DRAG_LAYERS = 3          # ground-drag layers (k < 3, z < 12 m)
+
     # Temperature-profile-based buoyancy (Stull 1988)
     LAPSE_RATE = PG_LAPSE_RATES["D"]  # K/m, set by stability class
     T_SURFACE  = T_SURFACE_DEFAULT    # K, surface temperature
@@ -1148,6 +1174,7 @@ class HybridFluidPuffSimulation:
                  wind_preset="calibrated",
                  stability_class="D",
                  shared_eddies=True,
+                 drag_compensation=True,
                  hp_gamma=HP_GAMMA):
         """
         seed              : puff RNG seed (defaults to wind_seed).
@@ -1176,6 +1203,10 @@ class HybridFluidPuffSimulation:
                             (corr e^{−τ_e/T_E}, T_E = T_L·i/γ) so the plume meanders
                             coherently.  False → independent N(0, σ²) draws.
         hp_gamma          : γ in the Hay–Pasquill ratio T_L/T_E = γ/i.
+        drag_compensation : scale the target in the drag layers so the mean
+                            resolved wind follows the power law (realised 10 m
+                            wind = wind_base_speed).  False: pre-A5 behaviour
+                            (10 m wind ≈ 21% below target).
         """
         self.seed = int(wind_seed if seed is None else seed)
         self.use_grid_gas = bool(use_grid_gas)
@@ -1183,6 +1214,7 @@ class HybridFluidPuffSimulation:
         if self.k_rel < 0.0:
             raise ValueError("K_rel must be >= 0")
         self.shared_eddies = bool(shared_eddies)
+        self.drag_compensation = bool(drag_compensation)
         self.hp_gamma = float(hp_gamma)
         self._release_rng = np.random.default_rng([self.seed, 7])
         self._release_zeta = None
@@ -1516,8 +1548,9 @@ class HybridFluidPuffSimulation:
         wp.launch(apply_global_wind, dim=shape,
                   inputs=[self.u0,float(wx),float(wy),float(wz),
                           _nudge_alpha,dt,float(shear_exp),self.turb_field,
-                          self.obstacle_mask,float(SHEAR_Z_REF),float(self.dx)])
-        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate),float(dt),3])
+                          self.obstacle_mask,float(SHEAR_Z_REF),float(self.dx),
+                          float(self.ground_drag_rate),self.N_DRAG_LAYERS,1 if self.drag_compensation else 0])
+        wp.launch(apply_ground_drag, dim=shape, inputs=[self.u0,float(self.ground_drag_rate),float(dt),self.N_DRAG_LAYERS])
 
         # Zero velocity inside obstacles before advection
         wp.launch(enforce_velocity_obstacle, dim=shape,

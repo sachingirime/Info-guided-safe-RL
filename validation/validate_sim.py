@@ -323,7 +323,8 @@ def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwarg
     probes = [[V3_SRC[0] + d, V3_SRC[1], V3_SRC[2]] for d in V4_X]
     probes += [[V3_SRC[0] + 50.0, V3_SRC[1] + dy, V3_SRC[2]] for dy in V4_OFF_DY]
     probes = np.array(probes, np.float32)
-    series, U_hist = [], []
+    series, U_hist, u10_vec = [], [], []
+    k10 = int(round(10.0 / sim.dx - 0.5))
     k_avg = int(round(0.5 / sim.frame_dt)); k_ts = int(round(0.1 / sim.frame_dt))
 
     run(sim, spin)
@@ -331,6 +332,7 @@ def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwarg
         sim.step()
         if (i + 1) % k_avg == 0:
             acc[:] += sim.query_concentration(P); n[0] += 1; U_hist.append(sim.U_src)
+            u10_vec.append(sim.u0.numpy()[5:-5, 5:-5, k10, :2].reshape(-1, 2).mean(0))
         if record_series and (i + 1) % k_ts == 0:
             series.append(sim.query_concentration(probes))
     fields = (acc / n[0]).reshape(len(V3_X), *pts[0][1])
@@ -353,13 +355,14 @@ def v3_run(pg="D", spin=150.0, avg=600.0, seed=1, record_series=False, sim_kwarg
     for r in rows:
         print(f"  V3[{pg}] x-xs={r['x_minus_xs']:5.0f}: σy {r['sigma_y_sim']:6.2f} vs {r['sigma_y_briggs']:6.2f} "
               f"(×{r['ratio_y']:.2f})   σz {r['sigma_z_sim']:6.2f} vs {r['sigma_z_briggs']:6.2f} (×{r['ratio_z']:.2f})")
+    U10 = float(np.linalg.norm(np.mean(u10_vec, 0)))
     print(f"V3[{pg}] Briggs (25–200 m within {list(V3_BAND)}): {verdict(ok and ok_ow)}  "
-          f"(U_src {np.mean(U_hist):.2f} m/s, n_overwritten={sim.n_overwritten})")
+          f"(realised U10 {U10:.2f} m/s, U_src {np.mean(U_hist):.2f} m/s, n_overwritten={sim.n_overwritten})")
     out = {"class": pg,
            "setup": {"source": V3_SRC, "U_ref_10m": V3_U, "spin_s": spin, "avg_s": avg, "max_puffs": 4096,
                      "sim_kwargs": dict(sim_kwargs), "wind_preset": sim.wind_preset,
                      "turb_scale": sim.turb_scale, "K_rel": sim.k_rel, "sigma_0": sim.sigma_0,
-                     "U_src_mean": float(np.mean(U_hist)), "lsm_sigma": list(sim.lsm_sigma),
+                     "U_src_mean": float(np.mean(U_hist)), "U10_realised": U10, "lsm_sigma": list(sim.lsm_sigma),
                      "lsm_TL": list(sim.lsm_TL), "class_table": {k: v for k, v in sf.PG_LSM[pg].items()}},
            "rows": rows, "n_overwritten": sim.n_overwritten, "n_emitted": sim.n_emitted,
            "pass": bool(ok and ok_ow)}

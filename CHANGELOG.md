@@ -41,6 +41,7 @@ Every behaviour change, with the old and new value. Validation numbers are in
 |---|---|---|---|
 | Grid convention | Puffs/sensor/env sampled at p/dx; mask and shear at cell centres (2 m shift on every axis); index clamped after the fraction | All samplers p/dx − 0.5, clamp-to-edge | Half-cell offset bug |
 | Shear | (z/128 m)^α, U_ref = wind at the domain top | U_ref·(z/10 m)^α | U_ref was not the 10 m wind |
+| Realised 10 m wind | Relaxation + ground drag left the resolved 10 m wind ~20% below the target; gusts added a +0.09 m/s mean | Target divided by the relaxation/drag equilibrium factor d·n/(1−d(1−n)) in the drag layers (`drag_compensation`); gust mean subtracted (zero-mean gusts). Realised U10 / requested = 1.006, 1.003, 1.001 at 1.5, 3, 8 m/s (3 seeds × 1200 s, `validation/a5_u10.json`) | A5 |
 | Gusts | New Exp(15 s) draw every frame vs the timer: a gust every ~3 s, active 69% | Poisson onsets, mean gap 15 s (active 12%) | Timing bug |
 | Ground drag | ×(1 − 0.08(1 − k/3)) per frame | ×exp(−2.4·dt·(1 − k/3)) | Frame-rate independence (profile within 2%) |
 | Resolved turbulence | Coarse OU σ_stat ≈ 2.7 m/s, mean-wind meander ≈ 14° at 3 m/s | `wind_preset="calibrated"`: ×0.1 (meander ≲ 3° at 1.5 m/s); `"meandering"` keeps ×1 | Turbulence is in the calibrated LSM |

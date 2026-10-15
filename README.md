@@ -70,6 +70,7 @@ Extra keyword arguments to `GaussianPuffEnv(...)` are passed to `HybridFluidPuff
 | `shared_eddies` | `True` | Meandering-plume model (Gifford 1959): successive puffs' release velocities correlated over the Eulerian time scale T_E, so the plume meanders coherently. `False` = independent puff noise (GADEN-equivalent) |
 | `hp_gamma` | `0.6` | γ in the Hay–Pasquill ratio T_L/T_E = γ/i |
 | `stability_class` | `"D"` | PG class A–F (set via the env's `stability_class`) |
+| `drag_compensation` | `True` | Target scaled in the ground-drag layers so the realised mean wind follows the power law (realised 10 m wind = `wind_base_speed`) |
 | `wind_preset` | `"calibrated"` | `"calibrated"` (small resolved fluctuations, ≲3° meander) or `"meandering"` (pre-LSM amplitudes, harder RL) |
 | `turb_scale` | from preset | Multiplies all stochastic resolved-wind amplitudes |
 | `buoyancy_mode` | `"none"` | `"none"` (neutral gas) or `"rise"` |
