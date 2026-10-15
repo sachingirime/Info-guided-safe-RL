@@ -65,11 +65,12 @@ def seg_hits_box64(p0, p1, c, h):
     tmin = np.zeros(d.shape[:-1]); tmax = np.ones(d.shape[:-1]); hit = np.ones(d.shape[:-1], bool)
     for a in range(3):
         small = np.abs(d[..., a]) < 1e-9
-        hit &= ~(small & (np.abs(p0[..., a] - c[a]) > h[a]))
+        ca, ha = np.asarray(c)[..., a], np.asarray(h)[..., a]
+        hit &= ~(small & (np.abs(p0[..., a] - ca) > ha))
         with np.errstate(divide="ignore", invalid="ignore"):
             inv = np.where(small, 0.0, 1.0 / np.where(small, 1.0, d[..., a]))
-            t1 = (c[a] - h[a] - p0[..., a]) * inv
-            t2 = (c[a] + h[a] - p0[..., a]) * inv
+            t1 = (ca - ha - p0[..., a]) * inv
+            t2 = (ca + ha - p0[..., a]) * inv
         tmin = np.where(small, tmin, np.maximum(tmin, np.minimum(t1, t2)))
         tmax = np.where(small, tmax, np.minimum(tmax, np.maximum(t1, t2)))
     return hit & (tmin <= tmax)

@@ -212,7 +212,10 @@ def sdf_sphere(p: wp.vec3, center: wp.vec3, radius: float):
 
 @wp.func
 def normal_sphere(p: wp.vec3, center: wp.vec3):
-    return wp.normalize(p - center)
+    d = p - center
+    if wp.length(d) < 1.0e-6:      # degenerate: point at the centre → push upward
+        return wp.vec3(0.0, 0.0, 1.0)
+    return wp.normalize(d)
 
 @wp.func
 def sdf_cuboid(p: wp.vec3, center: wp.vec3, half_extents: wp.vec3):
@@ -873,19 +876,33 @@ def advect_puffs_rk2(
     # reach a zone with nonzero wind velocity for advection.
     margin = 2.0
     # Obstacle bounce: also flip the turbulent velocity's normal component
-    # when it points into the surface.
-    for s in range(n_spheres):
-        c=sphere_centers[s]; r=sphere_radii[s]; dist=sdf_sphere(new_pos,c,r)
-        if dist<margin:
-            n=normal_sphere(new_pos,c); new_pos=new_pos+n*(margin-dist)
-            vn=wp.dot(v,n)
-            if vn<0.0: v=v-2.0*vn*n
-    for ci in range(n_cuboids):
-        c=cuboid_centers[ci]; e=cuboid_extents[ci]; dist=sdf_cuboid(new_pos,c,e)
-        if dist<margin:
-            n=normal_cuboid(new_pos,c,e); new_pos=new_pos+n*(margin-dist)
-            vn=wp.dot(v,n)
-            if vn<0.0: v=v-2.0*vn*n
+    # when it points into the surface.  Two passes over all obstacles handle
+    # most overlaps; a puff still inside one (e.g. in a crevice narrower than
+    # 2·margin between overlapping obstacles) is lifted until it is clear —
+    # obstacles stand on the ground, so moving up always terminates.
+    for npass in range(2):
+        for s in range(n_spheres):
+            c=sphere_centers[s]; r=sphere_radii[s]; dist=sdf_sphere(new_pos,c,r)
+            if dist<margin:
+                n=normal_sphere(new_pos,c); new_pos=new_pos+n*(margin-dist)
+                vn=wp.dot(v,n)
+                if vn<0.0: v=v-2.0*vn*n
+        for ci in range(n_cuboids):
+            c=cuboid_centers[ci]; e=cuboid_extents[ci]; dist=sdf_cuboid(new_pos,c,e)
+            if dist<margin:
+                n=normal_cuboid(new_pos,c,e); new_pos=new_pos+n*(margin-dist)
+                vn=wp.dot(v,n)
+                if vn<0.0: v=v-2.0*vn*n
+    for k in range(64):
+        phi=float(1.0e10)
+        for s in range(n_spheres):
+            phi=wp.min(phi, sdf_sphere(new_pos,sphere_centers[s],sphere_radii[s]))
+        for ci in range(n_cuboids):
+            phi=wp.min(phi, sdf_cuboid(new_pos,cuboid_centers[ci],cuboid_extents[ci]))
+        if phi>=0.0:
+            break
+        new_pos=new_pos+wp.vec3(0.0,0.0,margin-phi)
+        v=wp.vec3(v[0],v[1],wp.abs(v[2]))
     puff_pos[i]=new_pos
     puff_vel[i]=v
 
