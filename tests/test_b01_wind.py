@@ -47,7 +47,7 @@ def test_strong_wind(record):
     """U = 8, 12, 15 m/s: stable 600 s, no tunnelling through a 2 m wall,
     centreline C·U at 50 m constant within 10%."""
     jobs = [("strong_wind_tunnel", {"U": U}) for U in (8.0, 12.0, 15.0)]
-    jobs += [("plume_along", {"U": U, "avg": 1200.0, "source": [60.0, 64.0, 10.0]}) for U in (8.0, 12.0, 15.0)]
+    jobs += [("plume_along", {"U": U, "avg": 1800.0, "source": [60.0, 64.0, 10.0]}) for U in (8.0, 12.0, 15.0)]
     res = H.run_parallel(jobs)
     tun, plume = res[:3], res[3:]
     cu = np.array([p["c_centre"] * p["U"] for p in plume])

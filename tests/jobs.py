@@ -30,7 +30,8 @@ def plume_along(angle_deg=0.0, U=3.0, dist=50.0, avg=1200.0, spin=150.0, seed=1,
     w = np.array([np.cos(a), np.sin(a), 0.0]); n = np.array([-np.sin(a), np.cos(a), 0.0])
     ss = np.arange(-30.0, 30.0 + 0.25, 0.5); zs = np.arange(0.0, 50.0 + 0.25, 0.5)
     S, Z = np.meshgrid(ss, zs, indexing="ij")
-    P = (np.array(source) + dist * w + S[..., None] * n + Z[..., None] * np.array([0, 0, 1.0])).reshape(-1, 3).astype(np.float32)
+    base = np.array([source[0], source[1], 0.0]) + dist * w          # absolute heights z ∈ [0, 50]
+    P = (base + S[..., None] * n + Z[..., None] * np.array([0, 0, 1.0])).reshape(-1, 3).astype(np.float32)
     acc = np.zeros(len(P)); k = [0]
     V.run(sim, spin)
 
