@@ -1,0 +1,20 @@
+# Conda part of the gaden-bench environment (Python + C++ toolchain).
+# Do not use directly: run  bash bench/setup_env.sh  which also installs the
+# pinned Python packages (bench/requirements-gaden.txt) with the user site
+# (~/.local) disabled.
+name: gaden-bench
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pip
+  # gaden_core build (yaml-cpp, DDA, libbsc, Boost.Compute are bundled in its third_party/)
+  - cmake>=3.24
+  - ninja
+  - make
+  - cxx-compiler            # conda-forge GCC toolchain (C++20)
+  - fmt
+  - zlib
+variables:
+  PYTHONNOUSERSITE: "1"     # do not load packages from ~/.local (they leak into the source_seeking env)
