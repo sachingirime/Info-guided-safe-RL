@@ -193,7 +193,7 @@ def analyse(D, series, cond=None):
         vd = streak_offset(D["x"], D["y"], D["u"], D["v"]) < STREAK_R
         vm = {}
         for m in series:
-            if m.startswith("wind_"):
+            if m.startswith(("wind_", "anemo_")):
                 continue
             w = series["wind_s2"] if m == "ours_s2" else series["wind_s1"]
             vm[m] = streak_offset(D["x"], D["y"], w[:, 0], w[:, 1]) < STREAK_R
@@ -210,7 +210,7 @@ def analyse(D, series, cond=None):
         h1, h2 = whiff_stats(D["c"], dist, vth, v1 & vd), whiff_stats(D["c"], dist, vth, ~v1 & vd)
         row["data_halves"] = [[{k: v for k, v in b.items() if k != "logratio"} for b in h] for h in (h1, h2)]
         for m, c in series.items():
-            if m.startswith("wind_"):
+            if m.startswith(("wind_", "anemo_")):
                 continue
             inb0 = (dist < BINS[0][1]) & vm[m]
             cm = c[inb0]
@@ -227,6 +227,92 @@ def analyse(D, series, cond=None):
                                 "frac_time_near_streak": float(vm[m].mean()), "bins": [{k: v for k, v in b.items() if k != "logratio"} for b in ms]}
         res[f"{vth:g}V"] = row
     return res
+
+
+def runs_stats(c, thr, valid):
+    """Whiff (above) and blank (below) run durations (s) within valid samples."""
+    above = (c > thr) & valid
+    edges = np.flatnonzero(np.diff(np.r_[0, above.astype(int), 0]))
+    on, off = edges[0::2], edges[1::2]
+    wd = (off - on) / FS
+    bl = (on[1:] - off[:-1]) / FS
+    # keep blanks fully inside valid stretches
+    bl = np.array([b for b, a, z in zip(bl, off[:-1], on[1:]) if valid[a:z].all()])
+    return wd, bl
+
+
+def analyse_matched(D, series, vth=4.0):
+    """T3a: per-bin intermittency matching (transfer-function invariant).
+
+    In each distance bin (samples within STREAK_R of each side's own streakline)
+    the model threshold is the (1 − γ_data) quantile of the model concentration,
+    so model and data have the same intermittency there; whiff and blank
+    durations are then compared.  A bin where the model is non-zero less often
+    than γ_data is flagged (plume reaches the sensor too rarely)."""
+    dist = np.hypot(D["x"], D["y"])
+    vd = streak_offset(D["x"], D["y"], D["u"], D["v"]) < STREAK_R
+    out = {"data": [], "models": {}}
+    for lo, hi in BINS:
+        b = vd & (dist >= lo) & (dist < hi)
+        wd, bl = runs_stats(D["c"], vth, b)
+        out["data"].append({"bin": [lo, hi], "gamma": float((D["c"][b] > vth).mean()) if b.any() else np.nan,
+                            "n_whiffs": int(len(wd)), "dur_mean": float(wd.mean()) if len(wd) else np.nan,
+                            "dur_median": float(np.median(wd)) if len(wd) else np.nan,
+                            "blank_median": float(np.median(bl)) if len(bl) else np.nan, "_wd": wd, "_bl": bl})
+    for m, c in series.items():
+        if m.startswith(("wind_", "anemo_")):
+            continue
+        w = series["wind_s2"] if m == "ours_s2" else series["wind_s1"]
+        vm = streak_offset(D["x"], D["y"], w[:, 0], w[:, 1]) < STREAK_R
+        rows = []
+        for k, (lo, hi) in enumerate(BINS):
+            b = vm & (dist >= lo) & (dist < hi)
+            g = out["data"][k]["gamma"]
+            cb = c[b]
+            reach = float(np.mean(cb > 0)) if b.any() else np.nan
+            if not b.any() or not np.isfinite(g) or g <= 0 or reach < g:
+                rows.append({"bin": [lo, hi], "matched": False, "reach": reach}); continue
+            thr = float(np.quantile(cb, 1 - g))
+            wd, bl = runs_stats(c, thr, b)
+            dd = out["data"][k]
+            lw = np.log(np.maximum(wd, 0.1)); ld = np.log(np.maximum(dd["_wd"], 0.1))
+            rows.append({"bin": [lo, hi], "matched": True, "reach": reach, "n_whiffs": int(len(wd)),
+                         "dur_mean": float(wd.mean()) if len(wd) else np.nan,
+                         "dur_median": float(np.median(wd)) if len(wd) else np.nan,
+                         "blank_median": float(np.median(bl)) if len(bl) else np.nan,
+                         "skld_dur": skld(lw, ld, np.log(0.1), np.log(10.0))})
+        out["models"][m] = rows
+    for d in out["data"]:
+        d.pop("_wd"); d.pop("_bl")
+    return out
+
+
+def score_matched(res, model="ours_s1"):
+    """Mean |ln(model/data)| of mean whiff duration and median blank duration over
+    all bins; unmatched bins (plume reaches the sensor too rarely) count as ln 10."""
+    errs = []
+    for d, m in zip(res["data"], res["models"][model]):
+        for k in ("dur_mean", "blank_median"):
+            if not np.isfinite(d.get(k, np.nan)):
+                continue
+            if not m.get("matched") or not np.isfinite(m.get(k, np.nan)):
+                errs.append(np.log(10.0)); continue
+            errs.append(abs(np.log(m[k] / d[k])))
+    return float(np.mean(errs)) if errs else np.nan
+
+
+def wind_stats(u, v, fs=FS, win_s=900.0):
+    """T3b: σ_θ (15-min windows), turbulence intensity σ_S/S and the integral
+    time scale of the direction fluctuation (window-detrended, ACF to first zero)."""
+    th = np.arctan2(v, u); S = np.hypot(u, v); w = int(win_s * fs)
+    sig = [np.degrees(np.sqrt(-2 * np.log(np.hypot(np.cos(th[i:i + w]).mean(), np.sin(th[i:i + w]).mean()))))
+           for i in range(0, len(th) - w + 1, w)]
+    ti = [S[i:i + w].std() / S[i:i + w].mean() for i in range(0, len(S) - w + 1, w)]
+    d = np.unwrap(th); d = d - np.convolve(d, np.ones(w) / w, "same"); d = d[w:-w]; d = d[:200000] - d[:200000].mean()
+    ac = np.correlate(d, d, "full")[len(d) - 1:]; ac /= ac[0]
+    k = int(np.argmax(ac < 0)) if np.any(ac < 0) else len(ac)
+    return {"sigma_theta_deg": float(np.mean(sig)), "turb_intensity": float(np.mean(ti)),
+            "T_dir_s": float(np.trapezoid(ac[:k]) / fs), "mean_speed": float(S.mean())}
 
 
 def _spearman(a, b):

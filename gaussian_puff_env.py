@@ -212,10 +212,10 @@ class GaussianPuffEnv(gym.Env):
 
     # ------------------------------------------------------------------
     # Anemometer turbulence: the resolved wind is smooth, so the observed
-    # wind adds OU noise with the class LSM intensities (σ_u, σ_v, σ_w of
-    # the sim) and a short correlation time.  Off with wind_noise=False.
+    # wind adds the coherent turbulent velocity that moves the plume
+    # (sim.coherent_velocity: shared-eddy OU process, σ = class LSM σ, Eulerian
+    # time scale T_E, lagged by the advection time).  Off with wind_noise=False.
     # ------------------------------------------------------------------
-    WIND_NOISE_TAU = 1.0    # s
 
     # ------------------------------------------------------------------
     # Reward / convergence
@@ -280,7 +280,7 @@ class GaussianPuffEnv(gym.Env):
                  stability_class: str = "D", info_map_size: int = 0,
                  source_xy_min=None, source_xy_max=None, source_z_max=None,
                  warmup_s: float = None, wind_noise: bool = True,
-                 wind_noise_tau: float = None, **sim_kwargs):
+                 **sim_kwargs):
         """
         sim_kwargs are passed to HybridFluidPuffSimulation (use_grid_gas,
         K_rel, buoyancy_mode, w_rise0, ground_drag_rate, release_jitter,
@@ -288,6 +288,7 @@ class GaussianPuffEnv(gym.Env):
         """
         super().__init__()
         self._sim_kwargs = dict(sim_kwargs)
+        self._anemo_ss = np.zeros(3)
         grid = np.array([NX, NY, NZ]) * FLUID_DX
         if not np.allclose(self.DOMAIN_MAX, grid) or not np.allclose(self.DOMAIN_MIN, 0.0):
             raise ValueError(f"DOMAIN {self.DOMAIN_MIN}–{self.DOMAIN_MAX} does not match the fluid grid {grid}")
@@ -297,9 +298,6 @@ class GaussianPuffEnv(gym.Env):
             raise ValueError(f"N_PUFFS={self.N_PUFFS} holds only {self.N_PUFFS * self.PUFF_PERIOD:.0f} s of puffs, "
                              f"less than WARMUP_S={self.WARMUP_S:.0f} s")
         self.wind_noise = bool(wind_noise)
-        if wind_noise_tau is not None:
-            self.WIND_NOISE_TAU = float(wind_noise_tau)
-        self._wind_noise_state = np.zeros(3)
 
         self.source_mobile = source_mobile
         self.stability_class = stability_class
@@ -430,15 +428,20 @@ class GaussianPuffEnv(gym.Env):
         return (c0*(1-tz) + c1*tz).astype(np.float64)
 
     def _observed_wind(self) -> np.ndarray:
-        """Anemometer reading: resolved wind at the drone + OU turbulence."""
+        """Anemometer reading: resolved wind at the drone + the coherent turbulent
+        velocity that moves the plume (shared-eddy process, lagged by the advection
+        time to the drone; HybridFluidPuffSimulation.coherent_velocity).  Pre-v1.1
+        this was independent OU noise (τ = 1 s), uncorrelated with the plume's
+        meander, so wind-direction changes at the sensor carried no information
+        about where the plume went (field data: σ_θ 11–32°, direction time scale
+        37–84 s; v1.0 model: 1.4–6.3°, 13–25 s)."""
         w = self._sample_wind_at(self.p)
         if not self.wind_noise:
             return w
-        sig = np.array(self.fluid_sim.lsm_sigma)
-        a = np.exp(-self.DT / self.WIND_NOISE_TAU)
-        self._wind_noise_state = (a * self._wind_noise_state
-                                  + sig * np.sqrt(1.0 - a * a) * self._rng.standard_normal(3))
-        return w + self._wind_noise_state
+        sim = self.fluid_sim
+        # v1.1 surface layer: + local small-scale turbulence (σ_i(z), T_i(z) at the drone)
+        self._anemo_ss = sim.small_scale_ou(self._anemo_ss, float(self.p[2]), self.DT, self._rng)
+        return w + sim.coherent_velocity(self.p)[0] + self._anemo_ss
 
     # ── Obstacle generation ───────────────────────────────────────────────
 
@@ -546,8 +549,9 @@ class GaussianPuffEnv(gym.Env):
         self.p = self._spawn_drone()
 
         self.v = np.zeros(3, dtype=np.float64)
-        self._wind_noise_state = (np.array(self.fluid_sim.lsm_sigma) * self._rng.standard_normal(3)
-                                  if self.wind_noise else np.zeros(3))
+        sim = self.fluid_sim
+        self._anemo_ss = (np.array(sim.sl_sigma(float(self.p[2]))) * self._rng.standard_normal(3)
+                          if (self.wind_noise and sim.surface_layer) else np.zeros(3))
         self.w = self._observed_wind()
         self.t = 0.0
         self.step_count = 0

@@ -33,7 +33,8 @@ def test_reset_hygiene(record):
         "puff_vel": bool(np.array_equal(sa.puff_vel.numpy(), sb.puff_vel.numpy())),
         "shared_eddy_state": bool(np.array_equal(sa._release_zeta, sb._release_zeta)),
         "source": bool(np.array_equal(env.theta, fresh.theta)),
-        "anemometer_noise": bool(np.array_equal(env._wind_noise_state, fresh._wind_noise_state)),
+        "anemometer_eddy_history": bool(np.array_equal(sa._eddy_hist_v, sb._eddy_hist_v)
+                                        and np.array_equal(sa._eddy_hist_t, sb._eddy_hist_t)),
         "sensor_lag": env._y_lagged == fresh._y_lagged,
         "step_count": env.step_count == fresh.step_count,
         "theta_hat_cleared": env._theta_hat is None,
@@ -146,24 +147,38 @@ def test_sensor_model(record):
     assert abs((raw.mean() - C) / b - 1) < 0.01            # bias applied once
 
 
-def test_anemometer_noise(record):
-    env = GaussianPuffEnv(seed=0, warmup_s=5.0)
+def test_anemometer_coherent(record):
+    """v1.1: the anemometer adds the coherent (shared-eddy) velocity that moves the
+    plume, lagged by the advection time (Taylor), instead of independent OU noise."""
+    env = GaussianPuffEnv(seed=0, warmup_s=30.0)
     env.reset(seed=2)
+    sim = env.fluid_sim
+    n = min(sim._eddy_hist_i, sf.EDDY_HIST_N)
+    order = np.argsort(sim._eddy_hist_t[:n])
+    ts, vs = sim._eddy_hist_t[:n][order], sim._eddy_hist_v[:n][order]
+    src = np.asarray(sim.source_pos, float)
+    d = np.array([sim.wind_model.u_mean, sim.wind_model.v_mean]); d /= np.linalg.norm(d)
+    at_src = sim.coherent_velocity(src[None])[0]
+    x_dn = 30.0
+    p_dn = src + np.array([*(x_dn * d), 0.0])
+    t_dn = sim.sim_time - x_dn / sim.U_src
+    expect_dn = vs[np.searchsorted(ts, t_dn, side="right") - 1]
+    p_up = src - np.array([*(20.0 * d), 0.0])          # upwind: no lag
     clean = env._sample_wind_at(env.p)
-    env._sample_wind_at = lambda p: clean          # hold the resolved wind fixed (avoids 200k GPU copies)
-    n = np.array([env._observed_wind() - clean for _ in range(200_000)])   # ~10 samples per τ → N_eff ≈ 10⁴
-    sig = np.array(env.fluid_sim.lsm_sigma)
-    lag = int(round(env.WIND_NOISE_TAU / env.DT))
-    rho = [float(np.corrcoef(n[:-lag, a], n[lag:, a])[0, 1]) for a in range(3)]
+    obs = env._observed_wind()
     off = GaussianPuffEnv(seed=0, warmup_s=5.0, wind_noise=False)
     off.reset(seed=2)
-    exact = bool(np.array_equal(off._observed_wind(), off._sample_wind_at(off.p)))
-    record(mean_over_sigma=(n.mean(0) / sig).tolist(), std_over_sigma=(n.std(0) / sig).tolist(),
-           rho_at_tau=rho, rho_ref=float(np.exp(-1)), off_is_exact=exact)
-    assert np.all(np.abs(n.mean(0) / sig) < 0.05)
-    assert np.all(np.abs(n.std(0) / sig - 1) < 0.03)
-    assert np.all(np.abs(np.array(rho) - np.exp(-1)) < 0.03)
-    assert exact
+    exact_off = bool(np.array_equal(off._observed_wind(), off._sample_wind_at(off.p)))
+    sim_ind = sf.HybridFluidPuffSimulation(shared_eddies=False, max_puffs=64)
+    sim_ind.emit_puff()
+    record(at_source=at_src.tolist(), latest=vs[-1].tolist(), downwind=sim.coherent_velocity(p_dn[None])[0].tolist(),
+           expected_downwind=expect_dn.tolist(), off_is_exact=exact_off)
+    assert np.array_equal(at_src, vs[-1])
+    assert np.array_equal(sim.coherent_velocity(p_dn[None])[0], expect_dn)
+    assert np.array_equal(sim.coherent_velocity(p_up[None])[0], vs[-1])
+    assert np.allclose(obs - clean, sim.coherent_velocity(env.p[None])[0])
+    assert exact_off
+    assert np.all(sim_ind.coherent_velocity(np.zeros((1, 3))) == 0)
 
 
 def test_units_round_trip(record):
