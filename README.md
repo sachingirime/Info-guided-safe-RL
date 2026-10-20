@@ -7,7 +7,7 @@ Built on [NVIDIA Warp](https://developer.nvidia.com/warp), the environment coupl
 ## Features
 
 - **GPU-accelerated 3D fluid simulation** via NVIDIA Warp (64x32x32 grid, 4 m cells, 256x128x128 m domain)
-- **Lagrangian Gaussian puff model** (up to 2560 puffs in the env): RK2 advection on the resolved wind plus a per-puff OU turbulent velocity (Lagrangian stochastic model calibrated to Briggs), ground image, line-of-sight occlusion by obstacles
+- **Lagrangian Gaussian puff model** (up to 10240 puffs in the env): RK2 advection on the resolved wind plus a two-scale Lagrangian stochastic model (v1.1: surface-layer similarity turbulence per puff + coherent convective eddies), ground image, line-of-sight occlusion by obstacles. Validated against Prairie Grass field data and an outdoor odor-plume dataset (`bench/RESULTS_v11.md`)
 - **Pasquill-Gifford stability classes** (A-G) for turbulent diffusivity, shear exponent and lapse rate
 - **Methane sensor model** with bias, noise, first-order lag and soft sigmoid detection
 - **Mobile gas source** with Ornstein-Uhlenbeck drift
@@ -100,7 +100,17 @@ python realtime_viz.py --headless         # paper figures in figures/ (gitignore
 python validation/make_before_figure.py --prefix <checkout of tag pre-fix>
 ```
 
-Validation summary (class D, RTX 4090): V1 analytic plume within 5%; V3 mean-plume σ within ×[0.76, 1.49] of Briggs D over 25-200 m; V4 centreline intermittency γ 0.71-0.83; 30-47× real time. See `validation/results.json` and `CHANGELOG.md`.
+Validation summary, v1.1 (the env defaults; `bench/RESULTS_v11.md`, `validation/results_v11.json`):
+- **Prairie Grass** (64 runs, measured met, nothing fitted to it): FAC2 0.85 for arc-max C/Q, 1.00 for CWIC/Q and 0.98 for σ_y.
+- **Outdoor whiff timing:** 2–2.4× closer to field data than v1.0.
+- **Sensor wind:** σ_θ 13–26° (field 11–32°).
+- **Speed:** 35× real time with a query per step (hash-grid query).
+
+v1.0 (`HybridFluidPuffSimulation` defaults, Briggs-fitted): V1 analytic plume within 5%; V3 within ×[0.76, 1.49] of Briggs D; 30–47× real time (`validation/results.json`).
+
+```bash
+python validation/validate_v11.py --only V3,V5,V7     # v1.1 V3/V4 (Briggs as reference), V5, V7
+```
 
 ## Environment Details
 
@@ -109,16 +119,25 @@ Inviscid Stable Fluids on a 64x32x32 grid (4 m cells): semi-Lagrangian advection
 
 ### Gas Dispersion
 Lagrangian Gaussian puffs, one per `PUFF_PERIOD` with mass Q·`PUFF_PERIOD`:
-- RK2 advection on the trilinearly interpolated wind
-- Absolute dispersion: each puff carries a turbulent velocity v following an OU process (Thomson 1987) with σ_u = σ_v = a_y·U, σ_w = a_z·U from the Briggs near-field slopes and T_L fitted to Briggs σ(x) (`validation/fit_tl.py`); reflections flip v's normal component
-- Coherent meander (meandering-plume model, Gifford 1959): release velocities of successive puffs are correlated over T_E = T_L·i/γ (Hay–Pasquill form, Anfossi et al. 2006), so the instantaneous plume meanders and is intermittent
-- Relative dispersion: puff growth σ² = σ₀² + 2·K_rel·age
+- RK2 advection on the trilinearly interpolated wind; below the first cell centre (2 m) the power-law profile is continued to 0.1 m (`subgrid_wind`)
+- **v1.1 (env default, `surface_layer=True`): small-scale turbulence.** Each puff carries an independent velocity from surface-layer similarity theory:
+  - σ_u,v,w = (2.4, 1.9, 1.25)u*, with σ_w(z) enhanced in unstable conditions;
+  - ε(z) = u*³/(κz)·φ_ε;
+  - T_i(z) = 2σ_i²/(C₀ε), C₀ = 3.125;
+  - Thomson (1987) well-mixed drift.
+- **v1.1: large-scale turbulence.** Convective lateral eddies (unstable classes) are shared by successive puffs (coherent meander, T_E = T_L·i/γ).
+- **v1.1: met inputs.** u*, L and z_i come from the class, U₁₀ and z₀ (Golder 1972), or are passed measured via `met=`.
+- **v1.0 (`surface_layer=False`):** one homogeneous OU velocity per puff, σ = a·U with T_L fitted to Briggs (`validation/fit_tl.py`), plus release-correlated meander.
+- Relative dispersion: puff growth σ² = σ₀² + 2·K_rel·age (v1.1: σ₀ = 0.3 m, K_rel = 0.01 m²/s; v1.0: 1 m, 0.05 m²/s)
 - Ground reflection by the method of images; removal at the open domain faces
 - Obstacles: puffs pushed 2 m out of solids; line-of-sight occlusion from puff centre to the sample point
 - Buoyancy off by default; optional decaying rise velocity for methane
 
 ### Sensor Model
-TDLAS-style methane sensor: bias 1e-4 kg/m³, Gaussian noise σ = 1e-4 kg/m³, first-order lag τ = 1 s, detection threshold 3e-4 kg/m³ (3σ), normalisation ceiling 0.1 kg/m³. Anemometer: resolved wind + OU turbulence (class σ, τ = 1 s).
+TDLAS-style methane sensor: bias 1e-4 kg/m³, Gaussian noise σ = 1e-4 kg/m³, first-order lag τ = 1 s, detection threshold 3e-4 kg/m³ (3σ), normalisation ceiling 0.1 kg/m³. Anemometer (v1.1): the sum of
+- the resolved wind;
+- the coherent eddy velocity that moves the plume, lagged by the advection time from the source;
+- local small-scale surface-layer turbulence (σ_i(z), T_i(z)).
 
 ## Physics changes since `pre-fix`
 

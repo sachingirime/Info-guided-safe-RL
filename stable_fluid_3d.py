@@ -172,6 +172,86 @@ PG_SHEAR_EXPONENTS = {
     "G": 0.40,   # Extremely stable — very strong shear
 }
 SHEAR_Z_REF = 10.0   # m, reference height of the shear profile
+EDDY_HIST_N = 16384  # stored shared-eddy release velocities (≥ 3200 s at 0.2 s)
+
+# ── Surface-layer turbulence (v1.1 two-scale LSM, surface_layer=True) ─────────
+# Small scales: mechanical surface-layer turbulence, independent per puff,
+#   σ_u, σ_v, σ_w = (2.4, 1.9, 1.25)·u*   (Panofsky & Dutton 1984),
+#   σ_w(z) = 1.25 u*(1 − 3z/L)^{1/3} for L < 0 (Panofsky et al. 1977),
+#   ε(z) = u*³/(κz)·φ_ε(z/L), φ_ε = (1 + 0.5|ζ|^{2/3})^{3/2} (ζ<0), 1 + 5ζ (ζ≥0)
+#   (Kaimal & Finnigan 1994), T_i(z) = 2σ_i²/(C0 ε(z)) (Thomson 1987),
+#   with C0 = 3.125 so that T_w = 0.5 z/σ_w in neutral conditions (Wilson,
+#   Thurtell & Kidd 1981).  Vertical: Thomson's well-mixed drift
+#   ½(1 + w²/σ_w²)∂σ_w²/∂z.  Large scales (unstable only): convective lateral
+#   eddies, σ_c² = σ_v,P² − (1.9u*)² with σ_v,P = u*(12 + 0.5 z_i/|L|)^{1/3}
+#   (Panofsky et al. 1977), T_c = 0.15 z_i/σ_v,P (Hanna 1982); coherent across
+#   puffs through the shared-eddy release process.
+# Met inputs: u*, L, z_i — from (class, U10, z0) via the Golder (1972) 1/L–z0
+# relation and Monin–Obukhov similarity, or given (met=dict(ustar, inv_L, zi)).
+KARMAN = 0.4
+SL_SIGMA_MECH = (2.4, 1.9, 1.25)
+SL_C0 = 3.125
+SL_Z_MIN = 0.5           # m, floor of z in ε(z) and T(z)
+GOLDER_AB = {"A": (-0.096, 0.029), "B": (-0.037, 0.029), "C": (-0.002, 0.018),
+             "D": (0.0, 0.0), "E": (0.004, -0.018), "F": (0.035, -0.036)}
+
+
+def golder_inv_L(pg_class, z0):
+    """1/L (1/m) for a Pasquill class and roughness z0 (Golder 1972, fitted form
+    1/L = a + b·log10 z0 as tabulated in Seinfeld & Pandis)."""
+    a, b = GOLDER_AB[pg_class.upper()]
+    return a + b * math.log10(z0)
+
+
+def psi_m(zeta):
+    """Businger–Dyer stability correction of the wind profile."""
+    if zeta >= 0:
+        return -5.0 * min(zeta, 1.0) - (5.0 * math.log(zeta) if zeta > 1 else 0.0)
+    x = (1 - 16 * zeta) ** 0.25
+    return 2 * math.log((1 + x) / 2) + math.log((1 + x * x) / 2) - 2 * math.atan(x) + math.pi / 2
+
+
+def friction_velocity(U, z, z0, inv_L):
+    """u* (m/s) from the wind speed U at height z (log law with ψ_m)."""
+    den = math.log(z / z0) - psi_m(z * inv_L) + psi_m(z0 * inv_L)
+    return max(KARMAN * U / max(den, 1e-3), 0.01)
+
+
+def sl_phi_eps(zeta):
+    if zeta < 0:
+        return (1 + 0.5 * abs(zeta) ** (2.0 / 3.0)) ** 1.5
+    return 1 + 5 * min(zeta, 10.0)
+
+
+def sl_sigma_w(z, ustar, inv_L):
+    z = max(z, SL_Z_MIN)
+    return SL_SIGMA_MECH[2] * ustar * ((1 - 3 * z * inv_L) ** (1.0 / 3.0) if inv_L < 0 else 1.0)
+
+
+def sl_eps(z, ustar, inv_L):
+    z = max(z, SL_Z_MIN)
+    return ustar ** 3 / (KARMAN * z) * sl_phi_eps(z * inv_L)
+
+
+@wp.func
+def sl_phi_eps_w(zeta: float):
+    if zeta < 0.0:
+        return wp.pow(1.0 + 0.5 * wp.pow(wp.abs(zeta), 2.0 / 3.0), 1.5)
+    return 1.0 + 5.0 * wp.min(zeta, 10.0)
+
+
+@wp.func
+def sl_sigma_w2_w(z: float, ustar: float, inv_L: float):
+    if inv_L < 0.0:
+        return 1.5625 * ustar * ustar * wp.pow(1.0 - 3.0 * z * inv_L, 2.0 / 3.0)
+    return 1.5625 * ustar * ustar
+
+
+@wp.func
+def sl_dsigma_w2_dz_w(z: float, ustar: float, inv_L: float):
+    if inv_L < 0.0:
+        return -3.125 * ustar * ustar * inv_L * wp.pow(1.0 - 3.0 * z * inv_L, -1.0 / 3.0)
+    return 0.0
 
 # Wind presets (stochastic resolved-wind amplitude, see HybridFluidPuffSimulation).
 #   calibrated: resolved fluctuations small, mean-direction meander ≲ 3° at the
@@ -755,7 +835,7 @@ def reflect_puffs_at_boundary(
     domain_max_x:float, domain_max_y:float, domain_max_z:float,
     counters: wp.array(dtype=int),
     puff_mass: wp.array(dtype=float), mass_counters: wp.array(dtype=float),
-    closed: int,
+    closed: int, puff_vs: wp.array(dtype=wp.vec3),
 ):
     i=wp.tid()
     if puff_active[i]==0: return
@@ -777,6 +857,14 @@ def reflect_puffs_at_boundary(
         if pz>domain_max_z:
             pz=2.0*domain_max_z-pz; vz=-vz
         puff_pos[i]=wp.vec3(px,py,pz); puff_vel[i]=wp.vec3(vx,vy,vz)
+        s=puff_vs[i]; sx=s[0]; sy=s[1]; sz=s[2]
+        if p[0]<0.0 or p[0]>domain_max_x:
+            sx=-sx
+        if p[1]<0.0 or p[1]>domain_max_y:
+            sy=-sy
+        if p[2]<0.0 or p[2]>domain_max_z:
+            sz=-sz
+        puff_vs[i]=wp.vec3(sx,sy,sz)
         return
     # Open faces (x, y, z_top): deactivate puffs that leave the domain
     if px<0.0 or px>domain_max_x or py<0.0 or py>domain_max_y or pz>domain_max_z:
@@ -790,6 +878,8 @@ def reflect_puffs_at_boundary(
         pz=-pz
         v=puff_vel[i]
         puff_vel[i]=wp.vec3(v[0], v[1], -v[2])
+        s=puff_vs[i]
+        puff_vs[i]=wp.vec3(s[0], s[1], -s[2])
     puff_pos[i]=wp.vec3(px, py, pz)
 
 # ── Lagrangian puffs ─────────────────────────────────────────────────────────
@@ -807,6 +897,7 @@ def emit_puff_kernel(
     counters: wp.array(dtype=int),
     vel: wp.vec3,
     mass_counters: wp.array(dtype=float),
+    puff_vs: wp.array(dtype=wp.vec3), vs: wp.vec3,
 ):
     # A still-active puff in this ring-buffer slot means max_puffs is too
     # small and its mass is lost: count it.
@@ -819,9 +910,28 @@ def emit_puff_kernel(
     puff_mass[idx] = mass
     # Turbulent velocity at release (host: σ·ζ, ζ ~ N(0,1), shared eddies)
     puff_vel[idx] = vel
+    # Small-scale (surface-layer) velocity, independent per puff
+    puff_vs[idx] = vs
 
 BUOY_NONE = wp.constant(0)
 BUOY_RISE = wp.constant(1)
+
+SUBGRID_Z_FLOOR = 0.1   # m, lowest height of the sub-grid wind profile
+SUBGRID_Z_FLOOR_W = wp.constant(SUBGRID_Z_FLOOR)
+
+
+@wp.func
+def subgrid_scale(v: wp.vec3, z: float, dx: float, shear_exp: float, on: int):
+    """Sub-grid surface-layer wind below the lowest cell centre z1 = dx/2.
+    The resolved field is constant below z1 (clamped interpolation), so puffs
+    near the ground moved at the z1 wind.  Extend the power-law profile the
+    wind is relaxed to: u_h(z) = u_h(z1)·(max(z, z_floor)/z1)^α for z < z1."""
+    z1 = 0.5 * dx
+    if on == 0 or z >= z1:
+        return v
+    f = wp.pow(wp.max(z, SUBGRID_Z_FLOOR_W) / z1, shear_exp)
+    return wp.vec3(v[0] * f, v[1] * f, v[2])
+
 
 @wp.kernel
 def advect_puffs_rk2(
@@ -834,6 +944,9 @@ def advect_puffs_rk2(
     lapse_rate:float, t_surface:float, seed:int,
     buoy_mode:int, w_rise0:float, sigma_0:float,
     K_rel_x:float, K_rel_y:float, K_rel_z:float,
+    subgrid:int, shear_exp:float,
+    puff_vs: wp.array(dtype=wp.vec3), sl_on:int, ustar:float, inv_L:float,
+    sl_su:float, sl_sv:float, sl_c0:float, sl_zmin:float,
 ):
     i=wp.tid()
     if puff_active[i]==0: return
@@ -865,11 +978,29 @@ def advect_puffs_rk2(
               v[1]*ou_decay[1]+ou_noise[1]*wp.randn(state),
               v[2]*ou_decay[2]+ou_noise[2]*wp.randn(state))
 
+    # Small-scale surface-layer turbulence (surface_layer=True): exact OU update
+    # with the local T_i(z) = 2σ_i²/(C0 ε(z)) plus Thomson's (1987) well-mixed
+    # drift for the height-dependent σ_w (Gaussian, 1-D inhomogeneous).
+    vs=puff_vs[i]
+    if sl_on!=0:
+        zz=wp.max(pos[2],sl_zmin)
+        eps=ustar*ustar*ustar/(0.4*zz)*sl_phi_eps_w(zz*inv_L)
+        sw2=sl_sigma_w2_w(zz,ustar,inv_L)
+        dsw2=float(0.0)
+        if pos[2]>sl_zmin:
+            dsw2=sl_dsigma_w2_dz_w(zz,ustar,inv_L)
+        du=wp.exp(-dt*sl_c0*eps/(2.0*sl_su*sl_su))
+        dv=wp.exp(-dt*sl_c0*eps/(2.0*sl_sv*sl_sv))
+        dw=wp.exp(-dt*sl_c0*eps/(2.0*sw2))
+        ws=vs[2]
+        vs=wp.vec3(vs[0]*du+sl_su*wp.sqrt(1.0-du*du)*wp.randn(state),
+                   vs[1]*dv+sl_sv*wp.sqrt(1.0-dv*dv)*wp.randn(state),
+                   ws*dw+wp.sqrt(sw2*(1.0-dw*dw))*wp.randn(state)+0.5*(1.0+ws*ws/sw2)*dsw2*dt)
     # RK2 advection on resolved wind + turbulent velocity + buoyant rise
-    vb=wp.vec3(v[0],v[1],v[2]+buoy)
-    vel1=sample_vel_3d(wind_field,gx,gy,gz)+vb; k1=vel1*dt
-    gm=world_to_grid(pos+0.5*k1,dx)
-    vel2=sample_vel_3d(wind_field,gm[0],gm[1],gm[2])+vb
+    vb=wp.vec3(v[0]+vs[0],v[1]+vs[1],v[2]+vs[2]+buoy)
+    vel1=subgrid_scale(sample_vel_3d(wind_field,gx,gy,gz),pos[2],dx,shear_exp,subgrid)+vb; k1=vel1*dt
+    pm=pos+0.5*k1; gm=world_to_grid(pm,dx)
+    vel2=subgrid_scale(sample_vel_3d(wind_field,gm[0],gm[1],gm[2]),pm[2],dx,shear_exp,subgrid)+vb
     new_pos=pos+vel2*dt
 
     # Obstacles — push puffs 2 m from the surface (half a cell) so they
@@ -887,12 +1018,16 @@ def advect_puffs_rk2(
                 n=normal_sphere(new_pos,c); new_pos=new_pos+n*(margin-dist)
                 vn=wp.dot(v,n)
                 if vn<0.0: v=v-2.0*vn*n
+                vsn=wp.dot(vs,n)
+                if vsn<0.0: vs=vs-2.0*vsn*n
         for ci in range(n_cuboids):
             c=cuboid_centers[ci]; e=cuboid_extents[ci]; dist=sdf_cuboid(new_pos,c,e)
             if dist<margin:
                 n=normal_cuboid(new_pos,c,e); new_pos=new_pos+n*(margin-dist)
                 vn=wp.dot(v,n)
                 if vn<0.0: v=v-2.0*vn*n
+                vsn=wp.dot(vs,n)
+                if vsn<0.0: vs=vs-2.0*vsn*n
     for k in range(64):
         phi=float(1.0e10)
         for s in range(n_spheres):
@@ -903,8 +1038,10 @@ def advect_puffs_rk2(
             break
         new_pos=new_pos+wp.vec3(0.0,0.0,margin-phi)
         v=wp.vec3(v[0],v[1],wp.abs(v[2]))
+        vs=wp.vec3(vs[0],vs[1],wp.abs(vs[2]))
     puff_pos[i]=new_pos
     puff_vel[i]=v
+    puff_vs[i]=vs
 
 @wp.kernel
 def sample_wind_point(u: wp.array3d(dtype=wp.vec3), p: wp.vec3, dx: float, out: wp.array(dtype=wp.vec3)):
@@ -936,38 +1073,90 @@ def puff_sum_at(
     if use_los != 0:
         if inside_obstacle(p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
             return c
-    s02 = sigma_0 * sigma_0
     for i in range(num_puffs):
-        if puff_active[i] == 0:
-            continue
-        age = current_time - puff_emit_time[i]
-        if age < 1e-6:
-            continue
-        sig2_x = s02 + 2.0*K_rel_x*age
-        sig2_y = s02 + 2.0*K_rel_y*age
-        sig2_z = s02 + 2.0*K_rel_z*age
-        sig_x = wp.sqrt(sig2_x); sig_y = wp.sqrt(sig2_y); sig_z = wp.sqrt(sig2_z)
-        q = puff_pos[i]
-        diff = p - q
-        # Early exit on horizontal distance only
-        if wp.abs(diff[0]) > 4.0*sig_x or wp.abs(diff[1]) > 4.0*sig_y:
-            continue
-        # Ground reflection (image source method):
-        #   real puff at z_i → dz_real = z - z_i;  image at -z_i → dz_image = z + z_i
-        dz_real = diff[2]
-        dz_image = p[2] + q[2]
-        if wp.abs(dz_real) > 4.0*sig_z and wp.abs(dz_image) > 4.0*sig_z:
-            continue
-        if use_los != 0:
-            if los_blocked(q, p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
-                continue
-        r2_xy = diff[0]*diff[0]/sig2_x + diff[1]*diff[1]/sig2_y
-        gauss_xy = wp.exp(-0.5*r2_xy)
-        gauss_z_real = wp.exp(-0.5*dz_real*dz_real/sig2_z)
-        gauss_z_image = wp.exp(-0.5*dz_image*dz_image/sig2_z)
-        norm = puff_mass[i] / (15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
-        c = c + norm*gauss_xy*(gauss_z_real + gauss_z_image)
+        c = c + puff_contrib(p, i, puff_pos, puff_active, puff_emit_time, puff_mass, current_time, sigma_0,
+                             K_rel_x, K_rel_y, K_rel_z, n_spheres, sphere_centers, sphere_radii,
+                             n_cuboids, cuboid_centers, cuboid_extents, use_los)
     return c
+
+
+@wp.func
+def puff_contrib(
+    p: wp.vec3, i: int,
+    puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float),
+    current_time: float, sigma_0: float,
+    K_rel_x: float, K_rel_y: float, K_rel_z: float,
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+    use_los: int,
+):
+    """Concentration at p from puff i (with ground image); 0 if inactive, beyond
+    4σ on an axis, or occluded."""
+    if puff_active[i] == 0:
+        return float(0.0)
+    age = current_time - puff_emit_time[i]
+    if age < 1e-6:
+        return float(0.0)
+    s02 = sigma_0 * sigma_0
+    sig2_x = s02 + 2.0*K_rel_x*age
+    sig2_y = s02 + 2.0*K_rel_y*age
+    sig2_z = s02 + 2.0*K_rel_z*age
+    sig_x = wp.sqrt(sig2_x); sig_y = wp.sqrt(sig2_y); sig_z = wp.sqrt(sig2_z)
+    q = puff_pos[i]
+    diff = p - q
+    # Early exit on horizontal distance only
+    if wp.abs(diff[0]) > 4.0*sig_x or wp.abs(diff[1]) > 4.0*sig_y:
+        return float(0.0)
+    # Ground reflection (image source method):
+    #   real puff at z_i → dz_real = z - z_i;  image at -z_i → dz_image = z + z_i
+    dz_real = diff[2]
+    dz_image = p[2] + q[2]
+    if wp.abs(dz_real) > 4.0*sig_z and wp.abs(dz_image) > 4.0*sig_z:
+        return float(0.0)
+    if use_los != 0:
+        if los_blocked(q, p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
+            return float(0.0)
+    r2_xy = diff[0]*diff[0]/sig2_x + diff[1]*diff[1]/sig2_y
+    gauss_xy = wp.exp(-0.5*r2_xy)
+    gauss_z_real = wp.exp(-0.5*dz_real*dz_real/sig2_z)
+    gauss_z_image = wp.exp(-0.5*dz_image*dz_image/sig2_z)
+    norm = puff_mass[i] / (15.74960995*sig_x*sig_y*sig_z)  # (2π)^{3/2} σxσyσz
+    return norm*gauss_xy*(gauss_z_real + gauss_z_image)
+
+
+@wp.kernel
+def query_sensor_hashed(
+    grid: wp.uint64, radius: float,
+    sensor_pos: wp.array(dtype=wp.vec3), dx: float,
+    puff_pos: wp.array(dtype=wp.vec3), puff_active: wp.array(dtype=int),
+    puff_emit_time: wp.array(dtype=float), puff_mass: wp.array(dtype=float), current_time: float,
+    sigma_0: float, K_rel_x: float, K_rel_y: float, K_rel_z: float,
+    concentration: wp.array(dtype=float),
+    n_spheres: int, sphere_centers: wp.array(dtype=wp.vec3), sphere_radii: wp.array(dtype=float),
+    n_cuboids: int, cuboid_centers: wp.array(dtype=wp.vec3), cuboid_extents: wp.array(dtype=wp.vec3),
+    use_los: int,
+):
+    """query_sensor_hybrid (puff part) over the puffs within `radius` of the sensor
+    only (hash grid).  `radius` bounds every puff's 4σ box, so the sum is the same
+    as the brute-force loop.  The image term needs no extra search: the image is
+    never closer to a point above ground than the puff itself."""
+    s = wp.tid(); p = sensor_pos[s]
+    if p[2] < 0.0 or p[0] < 0.0 or p[1] < 0.0 or p[0] > float(WIND_NX)*dx or p[1] > float(WIND_NY)*dx or p[2] > float(WIND_NZ)*dx:
+        concentration[s] = 0.0
+        return
+    c = float(0.0)
+    if use_los != 0:
+        if inside_obstacle(p, n_spheres,sphere_centers,sphere_radii,n_cuboids,cuboid_centers,cuboid_extents):
+            concentration[s] = 0.0
+            return
+    query = wp.hash_grid_query(grid, p, radius)
+    i = int(0)
+    while wp.hash_grid_query_next(query, i):
+        c = c + puff_contrib(p, i, puff_pos, puff_active, puff_emit_time, puff_mass, current_time, sigma_0,
+                             K_rel_x, K_rel_y, K_rel_z, n_spheres, sphere_centers, sphere_radii,
+                             n_cuboids, cuboid_centers, cuboid_extents, use_los)
+    concentration[s] = c
 
 
 @wp.kernel
@@ -1255,7 +1444,15 @@ class HybridFluidPuffSimulation:
                  fps=30,
                  closed_domain=False,
                  lsm_table=None,
-                 hp_gamma=HP_GAMMA):
+                 hp_gamma=HP_GAMMA,
+                 subgrid_wind=False,
+                 surface_layer=False,
+                 z0=0.03,
+                 zi=1000.0,
+                 met=None,
+                 sl_c0=SL_C0,
+                 meander_frac=0.0,
+                 meander_TE=60.0):
         """
         seed              : puff RNG seed (defaults to wind_seed).
         use_grid_gas      : legacy Eulerian gas field + source momentum jet.
@@ -1293,12 +1490,42 @@ class HybridFluidPuffSimulation:
                             (lsm_table; validation/fit_tl.py --class-sigma0).
         lsm_table         : optional {class: {"a_y", "a_z", "TL_y", "TL_z"}} overriding
                             entries of PG_LSM.
+        surface_layer     : v1.1 two-scale LSM (see SL_* constants): small-scale
+                            mechanical surface-layer turbulence per puff (u*, L,
+                            ε(z), T(z), Thomson drift) + convective coherent
+                            lateral eddies when unstable.  Replaces the
+                            Briggs-fitted homogeneous LSM (PG_LSM / lsm_table).
+        z0                : m, roughness length (surface_layer met from class).
+        zi                : m, mixed-layer depth (convective eddies, unstable).
+        met               : optional dict(ustar=…, inv_L=…, zi=…) overriding the
+                            class-derived surface-layer met (measured inputs).
+        sl_c0             : Lagrangian Kolmogorov constant C0 of T = 2σ²/(C0 ε).
+        meander_frac      : surface_layer, neutral/stable only: fraction f of the
+                            mechanical lateral variance (1.9u*)² carried by a coherent
+                            low-frequency meander (shared eddies, Eulerian time scale
+                            meander_TE); the small-scale σ_u, σ_v are reduced so the
+                            total variance is unchanged.  0 = off.
+        meander_TE        : s, Eulerian time scale of that meander.
+        subgrid_wind      : puffs below the lowest cell centre (z < dx/2 = 2 m) are
+                            advected with the power-law profile extended below
+                            the grid, u_h(z) = u_h(dx/2)·(max(z, 0.1)/(dx/2))^α,
+                            instead of the dx/2 wind (clamped interpolation).
         drag_compensation : scale the target in the drag layers so the mean
                             resolved wind follows the power law (realised 10 m
                             wind = wind_base_speed).  False: pre-A5 behaviour
                             (10 m wind ≈ 21% below target).
         """
         self.seed = int(wind_seed if seed is None else seed)
+        self.subgrid_wind = bool(subgrid_wind)
+        self.surface_layer = bool(surface_layer)
+        self.z0 = float(z0); self.zi = float(zi); self.sl_c0 = float(sl_c0)
+        if not (self.z0 > 0 and self.zi > 0 and self.sl_c0 > 0):
+            raise ValueError("z0, zi and sl_c0 must be > 0")
+        self.met_override = dict(met) if met else None
+        self.meander_frac = float(meander_frac); self.meander_TE = float(meander_TE)
+        if not (0.0 <= self.meander_frac < 1.0 and self.meander_TE > 0):
+            raise ValueError("meander_frac must be in [0, 1) and meander_TE > 0")
+        self._vs_rng = np.random.default_rng([self.seed, 11])
         self.use_grid_gas = bool(use_grid_gas)
         self.k_rel = float(K_rel)
         if self.k_rel < 0.0:
@@ -1315,7 +1542,10 @@ class HybridFluidPuffSimulation:
                 raise ValueError("class_sigma0 values must be > 0")
         self.hp_gamma = float(hp_gamma)
         self._release_rng = np.random.default_rng([self.seed, 7])
+        self._vs_rng = np.random.default_rng([self.seed, 11])
         self._release_zeta = None
+        self._eddy_hist_t = np.full(EDDY_HIST_N, -np.inf); self._eddy_hist_v = np.zeros((EDDY_HIST_N, 3))
+        self._eddy_hist_i = 0
         if buoyancy_mode not in ("none", "rise"):
             raise ValueError("buoyancy_mode must be 'none' or 'rise'")
         self.buoyancy_mode = buoyancy_mode
@@ -1363,7 +1593,10 @@ class HybridFluidPuffSimulation:
         self.puff_emit_time=wp.zeros(self.max_puffs,dtype=float)
         self.puff_mass=wp.zeros(self.max_puffs,dtype=float)   # kg per puff, set at release
         self.puff_vel=wp.zeros(self.max_puffs,dtype=wp.vec3)  # LSM turbulent velocity (m/s)
+        self.puff_vs=wp.zeros(self.max_puffs,dtype=wp.vec3)   # small-scale surface-layer velocity
         self.next_puff_idx=0; self.emit_interval=0.05
+        self._max_emit_interval=0.0; self._min_inject_emit=None; self._hash=None
+        self.use_hash_query=True
         self._next_emit_time=0.0   # emission schedule: t_n = n·emit_interval
         self.n_emitted=0
         self._counters=wp.zeros(2,dtype=int)   # [overwritten, exited]
@@ -1452,9 +1685,10 @@ class HybridFluidPuffSimulation:
                   self.rho_tmp, self.conc_grid):
             a.zero_()
         self.puff_pos.zero_(); self.puff_active.zero_(); self.puff_emit_time.zero_()
-        self.puff_mass.zero_(); self.puff_vel.zero_(); self._counters.zero_()
+        self.puff_mass.zero_(); self.puff_vel.zero_(); self.puff_vs.zero_(); self._counters.zero_()
         self._mass_counters.zero_(); self.mass_emitted = 0.0; self._overflow_warned = False
         self.next_puff_idx = 0
+        self._max_emit_interval = 0.0; self._min_inject_emit = None
         self._next_emit_time = 0.0
         self.n_emitted = 0
         self._step_counter = 0
@@ -1464,7 +1698,10 @@ class HybridFluidPuffSimulation:
         if seed is not None:
             self.seed = int(seed)
         self._release_rng = np.random.default_rng([self.seed, 7])
+        self._vs_rng = np.random.default_rng([self.seed, 11])
         self._release_zeta = None
+        self._eddy_hist_t = np.full(EDDY_HIST_N, -np.inf); self._eddy_hist_v = np.zeros((EDDY_HIST_N, 3))
+        self._eddy_hist_i = 0
         self._rng = np.random.default_rng(wind_seed)
         # Spatial turbulence field — warm-start from OU stationary distribution
         _turb_stat_std = self._turb_ou_sigma / math.sqrt(2.0 * self._turb_ou_theta)
@@ -1512,9 +1749,60 @@ class HybridFluidPuffSimulation:
         U = self.U_src
         self._U_src = U + (self.U_SRC_EVERY / self.U_SRC_TAU) * (speed - U)
 
+    def _update_met(self):
+        """Surface-layer met (u*, 1/L, z_i) for surface_layer=True."""
+        if self.met_override:
+            m = self.met_override
+            self.inv_L = float(m.get("inv_L", 0.0)); self.zi_eff = float(m.get("zi", self.zi))
+            self.ustar = float(m["ustar"]) if "ustar" in m else friction_velocity(
+                max(float(self.wind_base_speed), 0.3), SHEAR_Z_REF, self.z0, self.inv_L)
+        else:
+            self.inv_L = golder_inv_L(self.stability_class, self.z0)
+            self.zi_eff = self.zi
+            self.ustar = friction_velocity(max(float(self.wind_base_speed), 0.3), SHEAR_Z_REF, self.z0, self.inv_L)
+
+    def _meander_sigma(self):
+        """σ of the coherent neutral/stable meander (0 if off or unstable)."""
+        if not self.surface_layer or self.meander_frac <= 0 or self.inv_L < 0:
+            return 0.0
+        return math.sqrt(self.meander_frac) * SL_SIGMA_MECH[1] * self.ustar
+
+    def sl_sigma(self, z):
+        """Small-scale σ_u, σ_v, σ_w (m/s) at height z (surface_layer); the
+        meander share (if any) is removed from the horizontal components."""
+        su, sv, _ = SL_SIGMA_MECH
+        sm2 = self._meander_sigma() ** 2
+        su_ = math.sqrt(max((su * self.ustar) ** 2 - sm2, 0.0))
+        sv_ = math.sqrt(max((sv * self.ustar) ** 2 - sm2, 0.0))
+        return (su_, sv_, sl_sigma_w(z, self.ustar, self.inv_L))
+
+    def sl_T(self, z):
+        """Small-scale Lagrangian time scales T_i = 2σ_i²/(C0 ε(z)) (s)."""
+        e = sl_eps(z, self.ustar, self.inv_L)
+        return tuple(2 * s_ * s_ / (self.sl_c0 * e) for s_ in self.sl_sigma(z))
+
+    def _convective(self):
+        """(σ_c, T_c): coherent large-scale lateral eddies — convective (unstable,
+        Panofsky/Hanna) or, with meander_frac > 0, the neutral/stable meander
+        (T_L = β·meander_TE, β = γ/i, the Hay–Pasquill ratio used for T_E)."""
+        if not self.surface_layer:
+            return 0.0, 1e6
+        if self.inv_L >= 0:
+            sm = self._meander_sigma()
+            if sm <= 0:
+                return 0.0, 1e6
+            beta = max(self.hp_gamma / max(sm / self.U_src, 1e-6), 1.0)
+            return sm, beta * self.meander_TE
+        svp = self.ustar * (12.0 + 0.5 * self.zi_eff * abs(self.inv_L)) ** (1.0 / 3.0)
+        sm = SL_SIGMA_MECH[1] * self.ustar
+        return math.sqrt(max(svp * svp - sm * sm, 0.0)), 0.15 * self.zi_eff / svp
+
     @property
     def lsm_sigma(self):
         """LSM velocity standard deviations (σ_u, σ_v, σ_w) in m/s."""
+        if self.surface_layer:
+            sc, _ = self._convective()
+            return (sc, sc, 0.0)
         U = self.U_src
         m = self.sigma_min
         return (max(self.a_y * U, m), max(self.a_y * U, m), max(self.a_z * U, m))
@@ -1522,6 +1810,9 @@ class HybridFluidPuffSimulation:
     @property
     def lsm_TL(self):
         """Lagrangian time scales (s) per axis, T_L,fit·LSM_U_FIT/U."""
+        if self.surface_layer:
+            _, tc = self._convective()
+            return (tc, tc, 1e6)
         f = LSM_U_FIT / self.U_src
         return (self.TL_y * f, self.TL_y * f, self.TL_z * f)
 
@@ -1529,6 +1820,10 @@ class HybridFluidPuffSimulation:
     def lsm_TE(self):
         """Eulerian time scales (s) at the source, T_E = T_L/β, β = γ/i ≥ 1."""
         TL = self.lsm_TL
+        if self.surface_layer:
+            i = max(self.lsm_sigma[0] / self.U_src, 1e-6)
+            b = max(self.hp_gamma / i, 1.0)
+            return (TL[0] / b, TL[1] / b, TL[2])
         beta = [max(self.hp_gamma / a, 1.0) for a in (self.a_y, self.a_y, self.a_z)]
         return tuple(T / b for T, b in zip(TL, beta))
 
@@ -1550,6 +1845,7 @@ class HybridFluidPuffSimulation:
         self.TL_y, self.TL_z = c["TL_y"], c["TL_z"]
         if pg_class in self.class_sigma0:
             self.sigma_0 = float(self.class_sigma0[pg_class])
+        self._update_met()
         # Lapse rate (used only by buoyancy_mode="rise")
         self.LAPSE_RATE = PG_LAPSE_RATES[pg_class]
         # Shear exponent for power-law vertical wind profile
@@ -1715,6 +2011,8 @@ class HybridFluidPuffSimulation:
         `sim_time - last_emit < emit_interval` stretched 0.2 s to 7 frames.)
         """
         n_per = 2 if self.legacy_emission else 1
+        if self.sim_time + 1e-9 >= self._next_emit_time:
+            self._max_emit_interval = max(self._max_emit_interval, float(self.emit_interval))
         while self.sim_time + 1e-9 >= self._next_emit_time:
             mass = float(self.Q * self.emit_interval)
             for _ in range(n_per):
@@ -1726,11 +2024,19 @@ class HybridFluidPuffSimulation:
                     self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
                     self.puff_vel,
                     idx, wp.vec3(*[float(v) for v in pos]), float(self.sim_time), mass,
-                    self._counters, self._release_velocity(), self._mass_counters])
+                    self._counters, self._release_velocity(), self._mass_counters,
+                    self.puff_vs, self._release_small_scale(pos[2])])
                 self.next_puff_idx += 1
                 self.n_emitted += 1
                 self.mass_emitted += mass
             self._next_emit_time += self.emit_interval
+
+    def _release_small_scale(self, z):
+        """Small-scale velocity of a new puff: N(0, σ_i(z)²), independent per puff."""
+        if not self.surface_layer:
+            return wp.vec3(0.0, 0.0, 0.0)
+        v = np.array(self.sl_sigma(z)) * self._vs_rng.standard_normal(3)
+        return wp.vec3(*[float(c) for c in v])
 
     def _release_velocity(self):
         """Turbulent velocity of a new puff: σ·ζ, ζ ~ N(0, 1) per axis.
@@ -1745,7 +2051,45 @@ class HybridFluidPuffSimulation:
             rho = np.exp(-self.emit_interval / np.array(self.lsm_TE))
             self._release_zeta = rho * self._release_zeta + np.sqrt(1.0 - rho * rho) * xi
         v = np.array(self.lsm_sigma) * self._release_zeta
+        k = self._eddy_hist_i % EDDY_HIST_N
+        self._eddy_hist_t[k] = self.sim_time; self._eddy_hist_v[k] = v; self._eddy_hist_i += 1
         return wp.vec3(*[float(c) for c in v])
+
+    def small_scale_ou(self, state, z, dt, rng):
+        """One exact OU step of the local small-scale turbulence seen by a fixed or
+        slowly moving sensor at height z (surface_layer): σ_i(z), time scale T_i(z).
+        Returns the new (3,) state; zeros when surface_layer is off."""
+        if not self.surface_layer:
+            return np.zeros(3)
+        sig = np.array(self.sl_sigma(z)); T = np.array(self.sl_T(z))
+        a = np.exp(-dt / T)
+        return a * np.asarray(state, float) + sig * np.sqrt(1.0 - a * a) * rng.standard_normal(3)
+
+    def coherent_velocity(self, points):
+        """Large-scale turbulent velocity (m/s) that moves the plume, at points (M, 3).
+
+        With shared eddies, puffs leave the source with the velocity σ·ζ(t) of an
+        OU process with the Eulerian time scale T_E (Hay–Pasquill): the eddy at
+        the source.  A point downwind sees that eddy after the advection time
+        (Taylor's frozen turbulence): v(x, t) = σ·ζ(t − max(x_along, 0)/U_src),
+        x_along the downwind distance from the source along the mean wind.  An
+        anemometer reading = resolved wind + coherent_velocity, so wind-direction
+        changes at the sensor precede and predict the plume's meander.  Zero
+        without shared eddies (puff velocities are then independent)."""
+        P = np.atleast_2d(np.asarray(points, np.float64))
+        out = np.zeros((len(P), 3))
+        if not self.shared_eddies or self._eddy_hist_i == 0:
+            return out
+        wm = self.wind_model
+        d = np.array([wm.u_mean, wm.v_mean]); nd = np.linalg.norm(d)
+        d = d / nd if nd > 0 else np.array([1.0, 0.0])
+        along = (P[:, :2] - np.asarray(self.source_pos, float)[:2]) @ d
+        t_q = self.sim_time - np.maximum(along, 0.0) / self.U_src
+        n = min(self._eddy_hist_i, EDDY_HIST_N)
+        order = np.argsort(self._eddy_hist_t[:n])
+        ts, vs = self._eddy_hist_t[:n][order], self._eddy_hist_v[:n][order]
+        idx = np.clip(np.searchsorted(ts, t_q, side="right") - 1, 0, n - 1)
+        return vs[idx]
 
     def _fixed_inject_dir(self):
         return wp.vec3(0.0, 0.0, 2.0)
@@ -1838,13 +2182,18 @@ class HybridFluidPuffSimulation:
             int((self.seed*1000003+self._step_counter)%2147483647),
             1 if self.buoyancy_mode=="rise" else 0, float(self.w_rise0), float(self.sigma_0),
             *[float(v) for v in self.K_rel],
+            1 if self.subgrid_wind else 0, float(self.wind_model.shear_exponent),
+            self.puff_vs, 1 if self.surface_layer else 0,
+            float(getattr(self, "ustar", 0.0)), float(getattr(self, "inv_L", 0.0)),
+            *[float(v) for v in (self.sl_sigma(1.0)[:2] if self.surface_layer else (0.0, 0.0))],
+            float(self.sl_c0), float(SL_Z_MIN),
         ])
         self._step_counter+=1
         wp.launch(reflect_puffs_at_boundary,dim=n,inputs=[
             self.puff_pos,self.puff_active,self.puff_vel,
             float(self._domain_max[0]),float(self._domain_max[1]),float(self._domain_max[2]),
             self._counters, self.puff_mass, self._mass_counters,
-            1 if self.closed_domain else 0,
+            1 if self.closed_domain else 0, self.puff_vs,
         ])
 
     def _obstacle_args(self):
@@ -1865,15 +2214,45 @@ class HybridFluidPuffSimulation:
             *self._obstacle_args(),
         ])
 
+    def _influence_radius(self):
+        """Upper bound (m) of any active puff's 4σ box half-diagonal.  A live emitted
+        puff is at most max_puffs·emit_interval old (the ring buffer overwrites it
+        after that); injected puffs are tracked by their oldest emit time."""
+        age = self.max_puffs * self._max_emit_interval
+        if self._min_inject_emit is not None:
+            age = max(age, self.sim_time - self._min_inject_emit)
+        sig = math.sqrt(self.sigma_0 ** 2 + 2.0 * max(self.K_rel) * max(age, 0.0))
+        return 4.0 * math.sqrt(3.0) * sig * 1.0001
+
     def query_concentration(self, sensor_positions_np):
         """Concentration (kg/m³) at each sensor position.  Returns 0 below
-        ground, outside the domain and (with use_los) inside obstacles."""
+        ground, outside the domain and (with use_los) inside obstacles.
+        Uses a hash grid over puff centres (use_hash_query, default) unless the
+        legacy grid gas is on; same sum as the brute-force loop."""
+        if self.use_hash_query and not self.use_grid_gas:
+            return self._query_hashed(sensor_positions_np)
         M=sensor_positions_np.shape[0]; sensors=wp.array(sensor_positions_np,dtype=wp.vec3)
         conc=wp.zeros(M,dtype=float); n=min(self.next_puff_idx,self.max_puffs)
         wp.launch(query_sensor_hybrid,dim=M,inputs=[
             sensors,self.rho0,self._rho_scale(),self.dx,
             self.puff_pos,self.puff_active,self.puff_emit_time,self.puff_mass,
             self.sim_time,float(self.sigma_0),*[float(v) for v in self.K_rel],n,conc,
+            *self._obstacle_args(),
+        ])
+        return conc.numpy()
+
+    def _query_hashed(self, sensor_positions_np):
+        M = sensor_positions_np.shape[0]
+        sensors = wp.array(np.asarray(sensor_positions_np, np.float32), dtype=wp.vec3)
+        conc = wp.zeros(M, dtype=float)
+        R = self._influence_radius()
+        if self._hash is None:
+            self._hash = wp.HashGrid(NX, NY, NZ)
+        self._hash.build(points=self.puff_pos, radius=R)
+        wp.launch(query_sensor_hashed, dim=M, inputs=[
+            self._hash.id, float(R), sensors, self.dx,
+            self.puff_pos, self.puff_active, self.puff_emit_time, self.puff_mass,
+            self.sim_time, float(self.sigma_0), *[float(v) for v in self.K_rel], conc,
             *self._obstacle_args(),
         ])
         return conc.numpy()
@@ -1902,11 +2281,13 @@ class HybridFluidPuffSimulation:
         pos = np.zeros((self.max_puffs, 3), np.float32); pos[:n] = positions
         act = np.zeros(self.max_puffs, np.int32); act[:n] = 1
         emt = np.zeros(self.max_puffs, np.float32); emt[:n] = self.sim_time - ages
+        self._min_inject_emit = float(emt[:n].min()) if n else None
         mas = np.zeros(self.max_puffs, np.float32); mas[:n] = masses
         if velocities is None:
             velocities = np.random.default_rng(self.seed).standard_normal((n, 3)) * np.array(self.lsm_sigma)
         vel = np.zeros((self.max_puffs, 3), np.float32); vel[:n] = velocities
         wp.copy(self.puff_vel, wp.array(vel, dtype=wp.vec3))
+        self.puff_vs.zero_()
         wp.copy(self.puff_pos, wp.array(pos, dtype=wp.vec3))
         wp.copy(self.puff_active, wp.array(act, dtype=int))
         wp.copy(self.puff_emit_time, wp.array(emt, dtype=float))

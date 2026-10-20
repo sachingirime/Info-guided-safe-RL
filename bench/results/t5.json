@@ -1,0 +1,16 @@
+{
+ "cpu": "x86_64",
+ "gaden_threads": 8,
+ "gpu": "NVIDIA GeForce RTX 4090",
+ "n_puffs_ours": 669,
+ "n_filaments_gaden": 667,
+ "ours_wall_per_sim_s": 0.02114585890003582,
+ "gaden_wall_per_sim_s": 0.00015191170004982268,
+ "gaden_wind_upload_s": 0.0003551308000169229,
+ "ours_query_1_s": 0.00022359967999364017,
+ "gaden_query_1_s": 2.183710001190775e-05,
+ "ours_query_1000_s": 0.00025186243999996804,
+ "gaden_query_1000_s": 0.00011916135999854305,
+ "ours_realtime_factor": 47.29058321666499,
+ "gaden_realtime_factor": 6582.771436775632
+}

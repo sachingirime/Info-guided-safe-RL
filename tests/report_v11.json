@@ -1,0 +1,2131 @@
+{
+ "meta": {
+  "date": "2026-10-19 21:49:08",
+  "wall_s": 2610.4,
+  "job_retries": [],
+  "slow": true,
+  "python": "3.10.20",
+  "warp": "1.11.1",
+  "numpy": "2.2.6",
+  "gpu": [
+   "NVIDIA GeForce RTX 4090, 550.163.01",
+   "NVIDIA GeForce RTX 4090, 550.163.01"
+  ]
+ },
+ "tests": [
+  {
+   "test": "tests/test_a2_shared_eddies.py::test_release_marginal_and_taylor",
+   "result": "passed",
+   "duration_s": 3.62,
+   "numbers": {
+    "sigma": [
+     0.24,
+     0.24,
+     0.18
+    ],
+    "TL": [
+     198.4,
+     198.4,
+     44.0
+    ],
+    "TE": [
+     26.453333333333333,
+     26.453333333333333,
+     4.4
+    ],
+    "rho": [
+     0.9924664145606594,
+     0.9925164310839326,
+     0.9558450082162887
+    ],
+    "rho_ref": [
+     0.9924680246957843,
+     0.9924680246957843,
+     0.9555630362682842
+    ],
+    "ages": [
+     22.000000000000252,
+     44.000000000000064,
+     44.000000000000064,
+     59.999999999999154
+    ],
+    "var_v_over_sigma2": [
+     [
+      0.9963298693748053,
+      1.002343144370929,
+      1.0007058811951646
+     ],
+     [
+      0.9961688916442613,
+      1.0019537741535092,
+      0.9989018419039528
+     ],
+     [
+      0.9961688916442613,
+      1.0019537741535092,
+      0.9989018419039528
+     ],
+     [
+      0.9972327369249694,
+      1.001522715423454,
+      0.9998282372354017
+     ]
+    ],
+    "spread_over_taylor": [
+     [
+      0.9964159951167315,
+      1.004437500130133,
+      1.0015774831161774
+     ],
+     [
+      0.9965674934929494,
+      1.0035526293877812,
+      1.0005427426383746
+     ],
+     [
+      0.9965674934929494,
+      1.0035526293877812,
+      1.0005427426383746
+     ],
+     [
+      0.9965718297644687,
+      1.0032693583876318,
+      1.0002399102165853
+     ]
+    ]
+   }
+  },
+  {
+   "test": "tests/test_a2_shared_eddies.py::test_independent_release_same_marginal",
+   "result": "passed",
+   "duration_s": 1.49,
+   "numbers": {
+    "var_over_sigma2": [
+     0.9956762470741067,
+     0.9999376604644105,
+     0.9978839772422439
+    ],
+    "rho": [
+     0.0026718454621624667,
+     -0.0007751137551424259,
+     0.0009467443886141399
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_calm_wind[0.0]",
+   "result": "passed",
+   "duration_s": 4.78,
+   "numbers": {
+    "U": 0.0,
+    "U_src": 0.28455859863842053,
+    "lsm_sigma": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "lsm_TL": [
+     1000000.0,
+     1000000.0,
+     1000000.0
+    ],
+    "lsm_TE": [
+     1.6666666666666667,
+     1.6666666666666667,
+     1000000.0
+    ],
+    "spread_xyz": [
+     1.357009857341127,
+     2.9721357016957564,
+     4.330297150649099,
+     4.713410169455369
+    ],
+    "n_active": 1616,
+    "emitted": 2400,
+    "exited": 784,
+    "overwritten": 0,
+    "sl_sigma": [
+     0.049577020307505194,
+     0.03924847441010828,
+     0.025821364743492288
+    ],
+    "sl_T": [
+     267.11263755085474,
+     167.40913568725446,
+     72.45894030784906
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_calm_wind[0.05]",
+   "result": "passed",
+   "duration_s": 5.1,
+   "numbers": {
+    "U": 0.05,
+    "U_src": 0.29712931221754385,
+    "lsm_sigma": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "lsm_TL": [
+     1000000.0,
+     1000000.0,
+     1000000.0
+    ],
+    "lsm_TE": [
+     1.6666666666666667,
+     1.6666666666666667,
+     1000000.0
+    ],
+    "spread_xyz": [
+     1.4197508737916678,
+     3.0949094287203844,
+     4.5946458343284675,
+     5.338041544826403
+    ],
+    "n_active": 1727,
+    "emitted": 2400,
+    "exited": 673,
+    "overwritten": 0,
+    "sl_sigma": [
+     0.049577020307505194,
+     0.03924847441010828,
+     0.025821364743492288
+    ],
+    "sl_T": [
+     267.11263755085474,
+     167.40913568725446,
+     72.45894030784906
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_calm_wind[0.2]",
+   "result": "passed",
+   "duration_s": 4.31,
+   "numbers": {
+    "U": 0.2,
+    "U_src": 0.2917493651608566,
+    "lsm_sigma": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "lsm_TL": [
+     1000000.0,
+     1000000.0,
+     1000000.0
+    ],
+    "lsm_TE": [
+     1.6666666666666667,
+     1.6666666666666667,
+     1000000.0
+    ],
+    "spread_xyz": [
+     1.1808038645828525,
+     2.994948735682195,
+     4.746720882863067,
+     7.084976208439099
+    ],
+    "n_active": 2400,
+    "emitted": 2400,
+    "exited": 0,
+    "overwritten": 0,
+    "sl_sigma": [
+     0.049577020307505194,
+     0.03924847441010828,
+     0.025821364743492288
+    ],
+    "sl_T": [
+     267.11263755085474,
+     167.40913568725446,
+     72.45894030784906
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_strong_wind",
+   "result": "passed",
+   "duration_s": 112.39,
+   "numbers": {
+    "tunnel": [
+     {
+      "U": 8.0,
+      "tunnels": 0,
+      "inside_logged": 0,
+      "nan": false,
+      "ke_first": 149.84075927734375,
+      "ke_last": 147.08323669433594,
+      "ke_max": 210.8193359375,
+      "n_exited": 2593,
+      "n_emitted": 3000
+     },
+     {
+      "U": 12.0,
+      "tunnels": 0,
+      "inside_logged": 0,
+      "nan": false,
+      "ke_first": 339.2690124511719,
+      "ke_last": 335.02520751953125,
+      "ke_max": 428.31353759765625,
+      "n_exited": 2735,
+      "n_emitted": 3000
+     },
+     {
+      "U": 15.0,
+      "tunnels": 0,
+      "inside_logged": 0,
+      "nan": false,
+      "ke_first": 531.456298828125,
+      "ke_last": 526.0678100585938,
+      "ke_max": 641.5430297851562,
+      "n_exited": 2796,
+      "n_emitted": 3000
+     }
+    ],
+    "plume": [
+     {
+      "angle": 0.0,
+      "U": 8.0,
+      "sigma_y": 4.257075489675724,
+      "sigma_z": 3.196055295819805,
+      "c_centre": 0.0015255804032916545,
+      "centre_offset": 0.14610645153487145,
+      "U_src": 7.852406924687236,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 0.0,
+      "U": 12.0,
+      "sigma_y": 4.150089161744189,
+      "sigma_z": 3.1323796763419764,
+      "c_centre": 0.0010413953331510914,
+      "centre_offset": 0.15677619003259205,
+      "U_src": 11.852395985075937,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 0.0,
+      "U": 15.0,
+      "sigma_y": 4.205745928520873,
+      "sigma_z": 3.1121400744999095,
+      "c_centre": 0.000826785218262924,
+      "centre_offset": 0.1456136479471596,
+      "U_src": 14.852580844684631,
+      "n_overwritten": 0
+     }
+    ],
+    "c_times_u": [
+     0.012204643226333236,
+     0.012496743997813097,
+     0.012401778273943861
+    ],
+    "cu_spread": 0.02393357725112466
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_direction_invariance",
+   "result": "passed",
+   "duration_s": 124.85,
+   "numbers": {
+    "results": [
+     {
+      "angle": 0,
+      "U": 3.0,
+      "sigma_y": 4.286056657763705,
+      "sigma_z": 3.350594237453981,
+      "c_centre": 0.00378094554788125,
+      "centre_offset": -0.06305681869633635,
+      "U_src": 3.000000238418573,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 45,
+      "U": 3.0,
+      "sigma_y": 4.312855599043009,
+      "sigma_z": 3.269989986502287,
+      "c_centre": 0.0037859578602910914,
+      "centre_offset": -0.0419043526373118,
+      "U_src": 2.999998852839119,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 90,
+      "U": 3.0,
+      "sigma_y": 4.2399629208623,
+      "sigma_z": 3.216351224593089,
+      "c_centre": 0.0039049509620478298,
+      "centre_offset": 0.01604975740556149,
+      "U_src": 3.000000238418573,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 135,
+      "U": 3.0,
+      "sigma_y": 4.230652694127122,
+      "sigma_z": 3.2897470082609828,
+      "c_centre": 0.0038637263648009443,
+      "centre_offset": 0.04609918022385764,
+      "U_src": 2.999998852839119,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 180,
+      "U": 3.0,
+      "sigma_y": 4.2822840670494084,
+      "sigma_z": 3.3426973212528703,
+      "c_centre": 0.003795846882251984,
+      "centre_offset": 0.03663660667711268,
+      "U_src": 3.000000238418573,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 225,
+      "U": 3.0,
+      "sigma_y": 4.3146406766014636,
+      "sigma_z": 3.2928025627582485,
+      "c_centre": 0.0037706403050500135,
+      "centre_offset": 0.04504759495196412,
+      "U_src": 2.999998852839119,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 270,
+      "U": 3.0,
+      "sigma_y": 4.226072963608978,
+      "sigma_z": 3.2228512397791653,
+      "c_centre": 0.003898393480521918,
+      "centre_offset": -0.026813704626477527,
+      "U_src": 3.000000238418573,
+      "n_overwritten": 0
+     },
+     {
+      "angle": 315,
+      "U": 3.0,
+      "sigma_y": 4.235211026917164,
+      "sigma_z": 3.293647617720106,
+      "c_centre": 0.003857064033242447,
+      "centre_offset": -0.019025366485923265,
+      "U_src": 2.999998852839119,
+      "n_overwritten": 0
+     }
+    ],
+    "spread": {
+     "sigma_y": 0.020957450038167513,
+     "sigma_z": 0.041737672128103975,
+     "c_centre": 0.035620119165950204
+    }
+   }
+  },
+  {
+   "test": "tests/test_b01_wind.py::test_sudden_direction_change",
+   "result": "passed",
+   "duration_s": 18.42,
+   "numbers": {
+    "max_disp_over_bound": 0.5613742374694891,
+    "young_puff_direction_deg": 95.68208286573905
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_at_ground[0.0]",
+   "result": "passed",
+   "duration_s": 6.53,
+   "numbers": {
+    "z_source": 0.0,
+    "min_puff_z": 5.363282298276317e-07,
+    "ground_C_max": 0.14220911264419556
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_at_ground[0.1]",
+   "result": "passed",
+   "duration_s": 5.15,
+   "numbers": {
+    "z_source": 0.1,
+    "min_puff_z": 2.488382733645267e-06,
+    "ground_C_max": 0.14277490973472595
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[x_lo]",
+   "result": "passed",
+   "duration_s": 1.44,
+   "numbers": {
+    "source": [
+     1.0,
+     64.0,
+     10.0
+    ],
+    "emitted": 300,
+    "active": 130,
+    "exited": 170,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[x_hi]",
+   "result": "passed",
+   "duration_s": 1.47,
+   "numbers": {
+    "source": [
+     255.0,
+     64.0,
+     10.0
+    ],
+    "emitted": 300,
+    "active": 2,
+    "exited": 298,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[y_lo]",
+   "result": "passed",
+   "duration_s": 1.65,
+   "numbers": {
+    "source": [
+     128.0,
+     1.0,
+     10.0
+    ],
+    "emitted": 300,
+    "active": 260,
+    "exited": 40,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[y_hi]",
+   "result": "passed",
+   "duration_s": 1.61,
+   "numbers": {
+    "source": [
+     128.0,
+     127.0,
+     10.0
+    ],
+    "emitted": 300,
+    "active": 2,
+    "exited": 298,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[top]",
+   "result": "passed",
+   "duration_s": 1.5,
+   "numbers": {
+    "source": [
+     128.0,
+     64.0,
+     127.0
+    ],
+    "emitted": 300,
+    "active": 9,
+    "exited": 291,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[corner_lo]",
+   "result": "passed",
+   "duration_s": 1.57,
+   "numbers": {
+    "source": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "emitted": 300,
+    "active": 300,
+    "exited": 0,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_near_faces[corner_hi]",
+   "result": "passed",
+   "duration_s": 1.67,
+   "numbers": {
+    "source": [
+     255.0,
+     127.0,
+     127.0
+    ],
+    "emitted": 300,
+    "active": 1,
+    "exited": 299,
+    "overwritten": 0
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_env_never_spawns_source_in_obstacle",
+   "result": "passed",
+   "duration_s": 2.73,
+   "numbers": {
+    "min_source_obstacle_distance": 2.018160301297007
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_sim_rejects_source_inside_obstacle",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b02_source.py::test_source_next_to_wall",
+   "result": "passed",
+   "duration_s": 8.58,
+   "numbers": {
+    "puffs_inside_logged": 0,
+    "far_side_C_max": 0.0004901388892903924,
+    "max_rel_err_vs_ref": 8.610844598983692e-08,
+    "n_far_side_nonzero": 76,
+    "n_blocked_shadow": 68
+   }
+  },
+  {
+   "test": "tests/test_b02_source.py::test_mobile_source",
+   "result": "passed",
+   "duration_s": 5.41,
+   "numbers": {
+    "min_source_obstacle_distance": 27.60656626601097,
+    "steps_outside_region": 0
+   }
+  },
+  {
+   "test": "tests/test_b03_sensor.py::test_sensor_at_source",
+   "result": "passed",
+   "duration_s": 1.63,
+   "numbers": {
+    "C_gpu": 0.01984219253063202,
+    "C_ref": 0.019842191824779646,
+    "rel_err": 3.557330658385357e-08
+   }
+  },
+  {
+   "test": "tests/test_b03_sensor.py::test_sensor_outside_returns_zero",
+   "result": "passed",
+   "duration_s": 1.67,
+   "numbers": {
+    "values": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b03_sensor.py::test_sensor_at_ground",
+   "result": "passed",
+   "duration_s": 1.49,
+   "numbers": {
+    "max_rel_err": 7.171740209433441e-07,
+    "n_points": 8
+   }
+  },
+  {
+   "test": "tests/test_b04_invariance.py::test_linearity_in_Q",
+   "result": "passed",
+   "duration_s": 4.75,
+   "numbers": {
+    "max_C": 0.03952353447675705,
+    "max_abs_dev": 0.0
+   }
+  },
+  {
+   "test": "tests/test_b04_invariance.py::test_superposition_kernel",
+   "result": "passed",
+   "duration_s": 3.26,
+   "numbers": {
+    "max_rel_err": 2.3008536397088685e-07,
+    "note": "single-source sim: superposition tested on the kernel"
+   }
+  },
+  {
+   "test": "tests/test_b04_invariance.py::test_translation_invariance",
+   "result": "passed",
+   "duration_s": 3.02,
+   "numbers": {
+    "max_rel_err": 0.0003482218136071285,
+    "median_rel_err": 2.7693126313294314e-05
+   }
+  },
+  {
+   "test": "tests/test_b04_invariance.py::test_rotation_90",
+   "result": "passed",
+   "duration_s": 64.19,
+   "numbers": {
+    "plus_x": {
+     "angle": 0.0,
+     "U": 3.0,
+     "sigma_y": 4.287753250497987,
+     "sigma_z": 3.327533466342408,
+     "c_centre": 0.003791895350140193,
+     "centre_offset": 0.008109467583334369,
+     "U_src": 3.000000238418573,
+     "n_overwritten": 0
+    },
+    "plus_y": {
+     "angle": 90.0,
+     "U": 3.0,
+     "sigma_y": 4.270853412269062,
+     "sigma_z": 3.2405339247029596,
+     "c_centre": 0.003842709339830132,
+     "centre_offset": -0.00019168341946492623,
+     "U_src": 3.000000238418573,
+     "n_overwritten": 0
+    },
+    "rel_dev": {
+     "sigma_y": 0.003941420422679864,
+     "sigma_z": 0.02614535436515908,
+     "c_centre": 0.013400683562657001
+    }
+   }
+  },
+  {
+   "test": "tests/test_b05_timestep.py::test_emission_rate_vs_fps",
+   "result": "passed",
+   "duration_s": 5.46,
+   "numbers": {
+    "15": {
+     "emitted": 300,
+     "puffs_per_s": 4.999999999999892,
+     "mass_per_s": 1.000000127156554,
+     "sim_time": 60.0000000000013
+    },
+    "30": {
+     "emitted": 300,
+     "puffs_per_s": 5.00000000000007,
+     "mass_per_s": 1.0000001271565897,
+     "sim_time": 59.999999999999154
+    },
+    "60": {
+     "emitted": 300,
+     "puffs_per_s": 5.000000000000177,
+     "mass_per_s": 1.000000127156611,
+     "sim_time": 59.999999999997875
+    }
+   }
+  },
+  {
+   "test": "tests/test_b05_timestep.py::test_ou_variance_vs_fps",
+   "result": "passed",
+   "duration_s": 0.18,
+   "numbers": {
+    "15": {
+     "var_ratio": [
+      0.9919878243057075,
+      1.0036772097442421,
+      0.9967557378867506
+     ],
+     "rho_20s": [
+      0.9043959342711294,
+      0.9048340173772434,
+      0.6386065181034685
+     ],
+     "rho_ref": [
+      0.9041080045986228,
+      0.9041080045986228,
+      0.6347364189402819
+     ]
+    },
+    "30": {
+     "var_ratio": [
+      0.9896870261159809,
+      1.0004607426088403,
+      0.999612997126575
+     ],
+     "rho_20s": [
+      0.9038893550325291,
+      0.9037753805570952,
+      0.636912764372498
+     ],
+     "rho_ref": [
+      0.9041080045986228,
+      0.9041080045986228,
+      0.6347364189402819
+     ]
+    },
+    "60": {
+     "var_ratio": [
+      0.991365787721976,
+      0.9932286319729736,
+      0.9936878357546838
+     ],
+     "rho_20s": [
+      0.9042408602808837,
+      0.9030985544750687,
+      0.637329102648186
+     ],
+     "rho_ref": [
+      0.9041080045986228,
+      0.9041080045986228,
+      0.6347364189402819
+     ]
+    }
+   }
+  },
+  {
+   "test": "tests/test_b05_timestep.py::test_mean_field_vs_fps",
+   "result": "passed",
+   "duration_s": 287.43,
+   "numbers": {
+    "v1": [
+     {
+      "fps": 15,
+      "rows": [
+       {
+        "x": 25.0,
+        "sigma_y": 2.5191619367644065,
+        "sigma_z": 2.1132821149328356,
+        "c_cl": 0.015390110736436867
+       },
+       {
+        "x": 50.0,
+        "sigma_y": 4.413526243568759,
+        "sigma_z": 3.429091317601696,
+        "c_cl": 0.00544847901724279
+       },
+       {
+        "x": 100.0,
+        "sigma_y": 8.219887886033362,
+        "sigma_z": 5.945621746943051,
+        "c_cl": 0.0016986407223847453
+       }
+      ],
+      "n_emitted": 9750,
+      "sim_time": 1949.9999999995412
+     },
+     {
+      "fps": 30,
+      "rows": [
+       {
+        "x": 25.0,
+        "sigma_y": 2.5251651587157706,
+        "sigma_z": 2.122422625378337,
+        "c_cl": 0.015256680695197752
+       },
+       {
+        "x": 50.0,
+        "sigma_y": 4.436016234093681,
+        "sigma_z": 3.4668368314547107,
+        "c_cl": 0.0053739226854749075
+       },
+       {
+        "x": 100.0,
+        "sigma_y": 8.287017943603352,
+        "sigma_z": 6.012210643514365,
+        "c_cl": 0.0016924066802675953
+       }
+      ],
+      "n_emitted": 9750,
+      "sim_time": 1949.9999999988838
+     },
+     {
+      "fps": 60,
+      "rows": [
+       {
+        "x": 25.0,
+        "sigma_y": 2.5250734187907,
+        "sigma_z": 2.1172386701598365,
+        "c_cl": 0.01532870906767332
+       },
+       {
+        "x": 50.0,
+        "sigma_y": 4.435757270122076,
+        "sigma_z": 3.437028687510453,
+        "c_cl": 0.005409800874881006
+       },
+       {
+        "x": 100.0,
+        "sigma_y": 8.27631105562646,
+        "sigma_z": 5.953496496608344,
+        "c_cl": 0.0016963955021472227
+       }
+      ],
+      "n_emitted": 9750,
+      "sim_time": 1949.9999999985553
+     }
+    ],
+    "v3": [
+     {
+      "class": "D",
+      "seed": 1,
+      "rows": [
+       {
+        "x_minus_xs": 25.0,
+        "sigma_y_sim": 2.7200977019923323,
+        "sigma_z_sim": 2.0084032646736847,
+        "ratio_y": 1.3617478508478476,
+        "ratio_z": 1.363809503040022
+       },
+       {
+        "x_minus_xs": 50.0,
+        "sigma_y_sim": 4.809337897566843,
+        "sigma_z_sim": 3.34900060184518,
+        "ratio_y": 1.205336562646444,
+        "ratio_z": 1.1574392428736968
+       },
+       {
+        "x_minus_xs": 100.0,
+        "sigma_y_sim": 8.850845561339593,
+        "sigma_z_sim": 5.923764224176381,
+        "ratio_y": 1.1118737129151601,
+        "ratio_z": 1.0587549025358987
+       },
+       {
+        "x_minus_xs": 150.0,
+        "sigma_y_sim": 12.980287522062701,
+        "sigma_z_sim": 7.797743521817841,
+        "ratio_y": 1.0897731100432095,
+        "ratio_z": 0.9589467276187268
+       },
+       {
+        "x_minus_xs": 200.0,
+        "sigma_y_sim": 16.96445090323286,
+        "sigma_z_sim": 8.90877506446165,
+        "ratio_y": 1.070828472961258,
+        "ratio_z": 0.8464638663529302
+       }
+      ],
+      "U10": 2.998713731765747,
+      "pass": true,
+      "centreline_intermittency": [
+       0.9966666666666667,
+       0.9911851851851852,
+       0.9641111111111111
+      ]
+     },
+     {
+      "class": "D",
+      "seed": 1,
+      "rows": [
+       {
+        "x_minus_xs": 25.0,
+        "sigma_y_sim": 2.6842708926959307,
+        "sigma_z_sim": 2.0115241817578475,
+        "ratio_y": 1.3438120684212176,
+        "ratio_z": 1.3659287668614102
+       },
+       {
+        "x_minus_xs": 50.0,
+        "sigma_y_sim": 4.7419066915511925,
+        "sigma_z_sim": 3.374387185984963,
+        "ratio_y": 1.1884366691881099,
+        "ratio_z": 1.1662130330932956
+       },
+       {
+        "x_minus_xs": 100.0,
+        "sigma_y_sim": 8.892125641223261,
+        "sigma_z_sim": 6.202272077517477,
+        "ratio_y": 1.1170594587709202,
+        "ratio_z": 1.1085326357407734
+       },
+       {
+        "x_minus_xs": 150.0,
+        "sigma_y_sim": 12.926085105414987,
+        "sigma_z_sim": 8.01995012969591,
+        "ratio_y": 1.0852224915718054,
+        "ratio_z": 0.9862731328645173
+       },
+       {
+        "x_minus_xs": 200.0,
+        "sigma_y_sim": 16.703616165032656,
+        "sigma_z_sim": 9.33970032955816,
+        "ratio_y": 1.0543640871703246,
+        "ratio_z": 0.887408066129378
+       }
+      ],
+      "U10": 3.0288150310516357,
+      "pass": true,
+      "centreline_intermittency": [
+       0.99725,
+       0.9896111111111111,
+       0.9649166666666666
+      ]
+     },
+     {
+      "class": "D",
+      "seed": 1,
+      "rows": [
+       {
+        "x_minus_xs": 25.0,
+        "sigma_y_sim": 2.675567845242684,
+        "sigma_z_sim": 2.0025154499840045,
+        "ratio_y": 1.339455108685321,
+        "ratio_z": 1.3598113728999432
+       },
+       {
+        "x_minus_xs": 50.0,
+        "sigma_y_sim": 4.748675595849464,
+        "sigma_z_sim": 3.305962528455466,
+        "ratio_y": 1.1901331205528372,
+        "ratio_z": 1.1425649681269299
+       },
+       {
+        "x_minus_xs": 100.0,
+        "sigma_y_sim": 8.907487305521668,
+        "sigma_z_sim": 6.031932262687438,
+        "ratio_y": 1.118989243965075,
+        "ratio_z": 1.0780877856043831
+       },
+       {
+        "x_minus_xs": 150.0,
+        "sigma_y_sim": 13.098025478860732,
+        "sigma_z_sim": 7.731660012786775,
+        "ratio_y": 1.0996579187681195,
+        "ratio_z": 0.9508199452287195
+       },
+       {
+        "x_minus_xs": 200.0,
+        "sigma_y_sim": 17.07223012242879,
+        "sigma_z_sim": 8.940817746212085,
+        "ratio_y": 1.077631702689521,
+        "ratio_z": 0.8495083895434401
+       }
+      ],
+      "U10": 3.0200421810150146,
+      "pass": true,
+      "centreline_intermittency": [
+       0.9981666666666666,
+       0.9889166666666667,
+       0.9651111111111111
+      ]
+     }
+    ],
+    "max_rel_dev_v1": 0.01387372616457605,
+    "max_rel_dev_v3": 0.04613908903829855
+   }
+  },
+  {
+   "test": "tests/test_b05_timestep.py::test_env_clock_non_integer_ratio",
+   "result": "passed",
+   "duration_s": 35.63,
+   "numbers": {
+    "results": [
+     {
+      "fps": 30,
+      "drift_s": -2.56704879575409e-10,
+      "frame_dt": 0.03333333333333333
+     },
+     {
+      "fps": 25,
+      "drift_s": -3.341256160638295e-10,
+      "frame_dt": 0.04
+     },
+     {
+      "fps": 24,
+      "drift_s": -3.552713678800501e-10,
+      "frame_dt": 0.041666666666666664
+     }
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_mass_balance_every_step",
+   "result": "passed",
+   "duration_s": 5.28,
+   "numbers": {
+    "emitted": 1200,
+    "exited": 767,
+    "overwritten": 66,
+    "mass_emitted": 241.58827604638552,
+    "worst_rel_mass_error": 6.557730735411156e-07
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[0.1-0.3]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 0.3,
+    "height": 0.03,
+    "mass_ratio": 0.9998488608326015
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[0.1-1.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 1.0,
+    "height": 0.1,
+    "mass_ratio": 0.999876093409875
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[0.1-5.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 5.0,
+    "height": 0.5,
+    "mass_ratio": 0.9998760785869379
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[1.0-0.3]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 0.3,
+    "height": 0.3,
+    "mass_ratio": 0.9998725556548023
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[1.0-1.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 1.0,
+    "height": 1.0,
+    "mass_ratio": 0.9998997687022037
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[1.0-5.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 5.0,
+    "height": 5.0,
+    "mass_ratio": 0.9998997651578524
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[10.0-0.3]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 0.3,
+    "height": 3.0,
+    "mass_ratio": 0.9998525234406781
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[10.0-1.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 1.0,
+    "height": 10.0,
+    "mass_ratio": 0.9998796883738924
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_kernel_mass[10.0-5.0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sigma": 5.0,
+    "height": 50.0,
+    "mass_ratio": 0.9998797067013265
+   }
+  },
+  {
+   "test": "tests/test_b06_conservation.py::test_overflow_warning_names_needed_size",
+   "result": "passed",
+   "duration_s": 1.3,
+   "numbers": {
+    "message": "puff ring buffer overflow: 1 active puffs overwritten (0.2 kg lost); oldest active puff is 20 s old. Use max_puffs (env N_PUFFS) >= 125.",
+    "needed": 125
+   }
+  },
+  {
+   "test": "tests/test_b07_turbulence.py::test_stationary_ou_statistics",
+   "result": "passed",
+   "duration_s": 0.09,
+   "numbers": {
+    "sigma": [
+     0.24,
+     0.24,
+     0.18
+    ],
+    "TL": [
+     20.0,
+     20.0,
+     10.0
+    ],
+    "rows": [
+     {
+      "lag": 4.999999999999992,
+      "var_ratio": [
+       0.9985793359052939,
+       1.0018429281552772,
+       1.0000942605072654
+      ],
+      "rho": [
+       0.7779441730060032,
+       0.779780549477099,
+       0.6088674440104335
+      ],
+      "rho_ref": [
+       0.7788007830714052,
+       0.7788007830714052,
+       0.6065306597126339
+      ]
+     },
+     {
+      "lag": 9.999999999999975,
+      "var_ratio": [
+       0.9922250968255109,
+       1.0061722738916814,
+       0.9935670744053148
+      ],
+      "rho": [
+       0.6062716982572474,
+       0.6084820012940079,
+       0.37162329902289054
+      ],
+      "rho_ref": [
+       0.6065306597126342,
+       0.6065306597126342,
+       0.3678794411714432
+      ]
+     },
+     {
+      "lag": 20.000000000000153,
+      "var_ratio": [
+       0.9945865449562977,
+       1.0071458046647104,
+       1.000376795838412
+      ],
+      "rho": [
+       0.3679012131380709,
+       0.368762957851451,
+       0.14080579752928557
+      ],
+      "rho_ref": [
+       0.36787944117143956,
+       0.36787944117143956,
+       0.13533528323661065
+      ]
+     },
+     {
+      "lag": 40.00000000000029,
+      "var_ratio": [
+       1.0029511538714668,
+       1.0014337720590378,
+       0.9984434310188192
+      ],
+      "rho": [
+       0.14029860197835292,
+       0.13139046007472316,
+       0.018651392098300516
+      ],
+      "rho_ref": [
+       0.1353352832366107,
+       0.1353352832366107,
+       0.018315638888733644
+      ]
+     }
+    ],
+    "max_var_err": 0.007774903174489145,
+    "max_rho_err": 0.005470514292674922
+   }
+  },
+  {
+   "test": "tests/test_b07_turbulence.py::test_well_mixed_closed_box",
+   "result": "passed",
+   "duration_s": 0.12,
+   "numbers": {
+    "chi2": 1000.6800000000001,
+    "p_value": 0.47907435063324033,
+    "active": 200000,
+    "boundary_bin_ratio_xyz": [
+     0.992125,
+     0.9939749999999999,
+     0.9885250000000001
+    ],
+    "rms_displacement_m": 33.54101966249684
+   }
+  },
+  {
+   "test": "tests/test_b07_turbulence.py::test_class_ordering",
+   "result": "passed",
+   "duration_s": 563.56,
+   "numbers": {
+    "classes": [
+     "A",
+     "B",
+     "C",
+     "D",
+     "E",
+     "F"
+    ],
+    "seeds": [
+     1,
+     2,
+     3
+    ],
+    "sigma_y_100m": [
+     20.13616752548423,
+     17.157315095901204,
+     12.342604998380706,
+     9.05769080689079,
+     7.090481994520197,
+     5.466935109680743
+    ],
+    "sigma_z_100m": [
+     15.749546094912292,
+     10.75389718521148,
+     7.936469279319592,
+     5.992784495309152,
+     3.267654381044027,
+     2.3300209713142848
+    ],
+    "intermittency_100m": [
+     0.2552314814814815,
+     0.3455925925925925,
+     0.49521296296296297,
+     0.6822685185185186,
+     0.8000185185185185,
+     0.9007870370370371
+    ],
+    "sigma_y_100m_per_seed": {
+     "A": [
+      19.261894627553993,
+      26.342922130370837,
+      14.803685818527862
+     ],
+     "B": [
+      20.106598548399802,
+      17.543806500538647,
+      13.82154023876516
+     ],
+     "C": [
+      14.606475612462283,
+      11.361866015299269,
+      11.059473367380564
+     ],
+     "D": [
+      9.812825191077248,
+      8.927608712989086,
+      8.432638516606035
+     ],
+     "E": [
+      7.173479502093899,
+      7.155221249024393,
+      6.942745232442301
+     ],
+     "F": [
+      5.40815011588616,
+      5.609205868209706,
+      5.383449344946362
+     ]
+    },
+    "U10": [
+     3.02878999710083,
+     3.0058999061584473,
+     3.0055229663848877,
+     3.0287957191467285,
+     3.0058865547180176,
+     3.0054774284362793,
+     3.028806686401367,
+     3.005868911743164,
+     3.005432367324829,
+     3.0288150310516357,
+     3.005849838256836,
+     3.0053863525390625,
+     3.0288374423980713,
+     3.0058441162109375,
+     3.0053365230560303,
+     3.0288615226745605,
+     3.0058343410491943,
+     3.0052919387817383
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b07_turbulence.py::test_seed_spread_class_D",
+   "result": "passed",
+   "duration_s": 327.33,
+   "numbers": {
+    "x": [
+     25.0,
+     50.0,
+     100.0,
+     150.0,
+     200.0
+    ],
+    "cov_sigma_y": [
+     0.059863879460218365,
+     0.06149051717940902,
+     0.06166953909971097,
+     0.06746414363132827,
+     0.05730171535800198
+    ],
+    "cov_sigma_z": [
+     0.017667772233442496,
+     0.022417158563147223,
+     0.0208513253667859,
+     0.02958750717230643,
+     0.03091478805934084
+    ],
+    "mean_ratio_y": [
+     1.3599096428205064,
+     1.1984240015594083,
+     1.1177692566692243,
+     1.106940046153118,
+     1.104651203168513
+    ],
+    "mean_ratio_z": [
+     1.3673359489359795,
+     1.1628937558530308,
+     1.080987458334701,
+     0.971061864335214,
+     0.8802166481067273
+    ],
+    "n_seeds_pass": 10,
+    "U10": [
+     3.0288150310516357,
+     3.005849838256836,
+     3.0053863525390625,
+     3.020524263381958,
+     2.997908115386963,
+     3.013659954071045,
+     3.015033006668091,
+     3.000913619995117,
+     2.9651575088500977,
+     3.040947437286377
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_no_puffs_inside_obstacles",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "puffs_inside_any_step": 0,
+    "n_obstacles": 7
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_no_puff_crosses_an_obstacle",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "crossing_steps": 0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_no_stuck_puffs",
+   "result": "passed",
+   "duration_s": 0.12,
+   "numbers": {
+    "stuck_puffs": 0,
+    "near_surface_10s_windows": 0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_bounce_reverses_normal_velocity[sphere]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "v_before": [
+     1.0,
+     0.3,
+     0.0
+    ],
+    "v_after": [
+     -0.998926043510437,
+     0.3030492067337036,
+     0.0
+    ],
+    "v_expected": [
+     -0.9989263797027386,
+     0.3030480850097652,
+     0.0
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_bounce_reverses_normal_velocity[box]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "v_before": [
+     1.0,
+     0.3,
+     0.0
+    ],
+    "v_after": [
+     -0.9998587369918823,
+     0.29995763301849365,
+     0.0
+    ],
+    "v_expected": [
+     -0.9998587303398387,
+     0.2999576191019516,
+     0.0
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_degenerate_geometry[sphere_centre]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "final_position": [
+     60.0,
+     64.0,
+     27.0
+    ],
+    "signed_distance": 2.0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_degenerate_geometry[box_centre]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "final_position": [
+     106.0,
+     64.0,
+     20.0
+    ],
+    "signed_distance": 2.0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_degenerate_geometry[overlap_crevice]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "final_position": [
+     60.0,
+     64.0,
+     37.0
+    ],
+    "signed_distance": 2.0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_degenerate_geometry[two_spheres]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "final_position": [
+     73.0,
+     64.0,
+     20.0
+    ],
+    "signed_distance": 2.0
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_los_vs_float64",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "n": 10000,
+    "n_random": 8000,
+    "random_mismatch_rate": 0.0,
+    "tangent_sphere_mismatch": 235,
+    "corner_box_mismatch": 157,
+    "sphere_mismatch_not_tangent": 0,
+    "box_mismatch_not_tangent": 0,
+    "sphere_hits": 1805,
+    "box_hits": 2704
+   }
+  },
+  {
+   "test": "tests/test_b08_obstacles.py::test_wind_around_obstacles",
+   "result": "passed",
+   "duration_s": 0.01,
+   "numbers": {
+    "max_speed_inside": 0.0,
+    "net_flux_into_solids_rel": 0.032980435175468795,
+    "solid_faces": 1184.0,
+    "wake_vs_free": [
+     [
+      3.2550557724525215,
+      3.5625825281359393
+     ],
+     [
+      2.9355138728409114,
+      3.3838932212012853
+     ],
+     [
+      2.4088007880317086,
+      2.562341088153728
+     ],
+     [
+      2.4106580986452664,
+      2.562341088153728
+     ],
+     [
+      3.419977822519851,
+      3.9883741749572104
+     ],
+     [
+      3.115221057221273,
+      3.72005119046897
+     ],
+     [
+      3.0839491061697744,
+      3.3838932212012853
+     ]
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b09_precision.py::test_gpu_vs_float64_reference",
+   "result": "passed",
+   "duration_s": 4.0,
+   "numbers": {
+    "max_rel_err": 1.2549270173931911e-06,
+    "worst_config": 642,
+    "n_sensor_values_compared": 23919
+   }
+  },
+  {
+   "test": "tests/test_b10_longrun.py::test_buffer_sizing_one_hour",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "n_overwritten": 14,
+    "warnings": [
+     "puff ring buffer overflow: 1 active puffs overwritten (0.25 kg lost); oldest active puff is 474 s old. Use max_puffs (env N_PUFFS) >= 12800."
+    ],
+    "max_active": 4627,
+    "max_puffs": 10240
+   }
+  },
+  {
+   "test": "tests/test_b10_longrun.py::test_clock_drift_one_hour",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "sim_time": 3749.999999997247,
+    "emitted": 75000,
+    "expected": 75000
+   }
+  },
+  {
+   "test": "tests/test_b10_longrun.py::test_long_run_stability",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "nan": false,
+    "ke_mean": 2.870008720445239,
+    "ke_max": 10.609163284301758,
+    "ke_trend_rel_per_30min": 0.006297276636393256,
+    "ke_quarter_means": [
+     2.823026113762482,
+     2.9791569433769554,
+     2.8713802476439216,
+     2.808535967009859
+    ],
+    "residual": [
+     0.002023867486665646,
+     0.0017842655070126057,
+     0.0017513842321932316,
+     0.001809643271068732,
+     0.0018091054322818916,
+     0.0017760349437594414,
+     0.0017688324054082234,
+     0.0019168293414016564,
+     0.0020058825612068176,
+     0.001578385631243388,
+     0.001853322299818198,
+     0.001795530163993438
+    ],
+    "puff_count_cv_second_half": 0.029828666594238218,
+    "puff_count_mean": 4372.966666666666,
+    "steps_per_s_first_5min": 1262.9081468058762,
+    "steps_per_s_last_5min": 1269.2375139523715
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_reset_hygiene",
+   "result": "passed",
+   "duration_s": 2.55,
+   "numbers": {
+    "obs": true,
+    "puff_pos": true,
+    "puff_vel": true,
+    "shared_eddy_state": true,
+    "source": true,
+    "anemometer_eddy_history": true,
+    "sensor_lag": true,
+    "step_count": true,
+    "theta_hat_cleared": true,
+    "info_map_cleared": true,
+    "u0": true
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_determinism_500_steps",
+   "result": "passed",
+   "duration_s": 5.85,
+   "numbers": {
+    "identical": true,
+    "differ": true
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_spawn_validity_1000_resets",
+   "result": "passed",
+   "duration_s": 1.17,
+   "numbers": {
+    "min_source_obstacle_dist": 2.018160301297007,
+    "min_drone_obstacle_dist": 5.025383589185965,
+    "min_drone_source_dist": 30.217485687972808,
+    "distinct_spawn_points": 1000
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_obstacles_set_before_warmup",
+   "result": "passed",
+   "duration_s": 0.12,
+   "numbers": {
+    "obstacles_at_first_warmup_step": 7
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_warmup_plume_reach",
+   "result": "passed",
+   "duration_s": 26.94,
+   "numbers": {
+    "rows": [
+     {
+      "seed": 0,
+      "reach_m": 112.55459667136067,
+      "edge_m": 112.24663690136965,
+      "U10": 1.5
+     },
+     {
+      "seed": 1,
+      "reach_m": 207.27150557630165,
+      "edge_m": 218.93935109377531,
+      "U10": 1.5
+     },
+     {
+      "seed": 2,
+      "reach_m": 124.33868745791054,
+      "edge_m": 109.0130123055661,
+      "U10": 1.5
+     },
+     {
+      "seed": 3,
+      "reach_m": 56.72198398013906,
+      "edge_m": 56.14079128021962,
+      "U10": 1.5
+     },
+     {
+      "seed": 4,
+      "reach_m": 234.2244357859176,
+      "edge_m": 236.22914757095924,
+      "U10": 1.5
+     },
+     {
+      "seed": 5,
+      "reach_m": 51.94916251420707,
+      "edge_m": 46.024942145018606,
+      "U10": 1.5
+     },
+     {
+      "seed": 6,
+      "reach_m": 100.07855343624298,
+      "edge_m": 91.58060663160458,
+      "U10": 1.5
+     },
+     {
+      "seed": 7,
+      "reach_m": 72.06678116837863,
+      "edge_m": 61.59318139763465,
+      "U10": 1.5
+     },
+     {
+      "seed": 8,
+      "reach_m": 170.62142072449953,
+      "edge_m": 169.51271587369206,
+      "U10": 1.5
+     },
+     {
+      "seed": 9,
+      "reach_m": 30.65075556250888,
+      "edge_m": 29.466332595436516,
+      "U10": 1.5
+     }
+    ],
+    "warmup_s": 120.0,
+    "n_ok": 10
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_observation_ranges_100_episodes",
+   "result": "passed",
+   "duration_s": 804.27,
+   "numbers": {
+    "n_steps": 155001,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "channels": {
+     "c_norm": {
+      "at_0": 0.3160237675885962,
+      "at_1": 0.0,
+      "gt_0.5": 0.021670827930142387
+     },
+     "c_detected": {
+      "at_0": 0.0,
+      "at_1": 0.02810304449648712,
+      "gt_0.5": 0.055393191011670895
+     }
+    }
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_sensor_model",
+   "result": "passed",
+   "duration_s": 0.45,
+   "numbers": {
+    "t63_s": 1.0,
+    "tau_s": 1.0,
+    "noise_std": 9.988734956379661e-05,
+    "spec_std": 0.0001,
+    "mean_minus_C": 9.975812043349318e-05,
+    "bias": 0.0001,
+    "clip_bias_at_C0": 8.007870907137754e-06
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_anemometer_coherent",
+   "result": "passed",
+   "duration_s": 3.82,
+   "numbers": {
+    "at_source": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "latest": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "downwind": [
+     -0.0,
+     -0.0,
+     0.0
+    ],
+    "expected_downwind": [
+     -0.0,
+     -0.0,
+     0.0
+    ],
+    "off_is_exact": true,
+    "small_std_over_sigma": [
+     0.9874382173794939,
+     1.0944920756572405,
+     1.0119120550316056
+    ],
+    "rho_1s": [
+     0.9907050983846645,
+     0.988131345840719,
+     0.9680234072524715
+    ],
+    "rho_ref": [
+     0.9910225897152458,
+     0.9857142720494698,
+     0.9673027304553073
+    ]
+   }
+  },
+  {
+   "test": "tests/test_b11_env.py::test_units_round_trip",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "ppm_of_1_g_per_m3": 1499.6955652238146
+   }
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_negative_attributes[sigma_0--1.0-sigma_0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_negative_attributes[sigma_0-0.0-sigma_0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_negative_attributes[Q--0.1-Q must]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw0-K_rel]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw1-wind_base_speed]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw2-Unknown PG class]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw3-fps]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw4-sigma_min]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw5-class_sigma0]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw6-wind_preset]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_bad_constructor_args[kw7-buoyancy_mode]",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_env_negative_q_sigma0",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_env_buffer_too_small_for_warmup",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_env_grid_mismatch",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b12_validation.py::test_obstacles_outside_domain",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_b13_perf.py::test_performance_baseline",
+   "result": "passed",
+   "duration_s": 11.79,
+   "numbers": {
+    "env_defaults_step_only": {
+     "steps_per_s": 1220.4553442266283,
+     "ms_per_step": 0.8193663166215022,
+     "real_time_factor": 40.68184480755428
+    },
+    "env_defaults_query_1": {
+     "steps_per_s": 932.5646462756638,
+     "ms_per_step": 1.0723117201511438,
+     "real_time_factor": 31.085488209188792
+    },
+    "env_step_per_s": 1127.5884547305402,
+    "max_puffs_10240_los_off_query_0": {
+     "steps_per_s": 1282.6082247584034,
+     "ms_per_step": 0.7796613031920667,
+     "real_time_factor": 42.75360749194678
+    },
+    "max_puffs_10240_los_off_query_1": {
+     "steps_per_s": 209.04493492787913,
+     "ms_per_step": 4.783660509856418,
+     "real_time_factor": 6.968164497595971
+    },
+    "max_puffs_10240_los_off_query_1000": {
+     "steps_per_s": 176.2615541630237,
+     "ms_per_step": 5.673386943332541,
+     "real_time_factor": 5.875385138767457
+    },
+    "max_puffs_10240_los_on_query_0": {
+     "steps_per_s": 1267.6018613174597,
+     "ms_per_step": 0.7888912366858373,
+     "real_time_factor": 42.25339537724866
+    },
+    "max_puffs_10240_los_on_query_1": {
+     "steps_per_s": 189.991820501208,
+     "ms_per_step": 5.263384483405389,
+     "real_time_factor": 6.333060683373599
+    },
+    "max_puffs_10240_los_on_query_1000": {
+     "steps_per_s": 115.36568099242277,
+     "ms_per_step": 8.668089083318288,
+     "real_time_factor": 3.8455226997474257
+    },
+    "device": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  {
+   "test": "tests/test_query_hash.py::test_hash_equals_bruteforce_env",
+   "result": "passed",
+   "duration_s": 1.45,
+   "numbers": {
+    "max_rel_err": 6.749476710865565e-08,
+    "nonzero_points": 513,
+    "radius": 22.2696918020524
+   }
+  },
+  {
+   "test": "tests/test_query_hash.py::test_hash_equals_bruteforce_injected_old",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "max_rel_err": 2.8178604338791047e-07,
+    "nonzero_points": 4000,
+    "radius": 119.99440417736008
+   }
+  },
+  {
+   "test": "tests/test_sl_lsm.py::test_well_mixed_unstable",
+   "result": "passed",
+   "duration_s": 7.0,
+   "numbers": {
+    "ks_stat": 0.009779214859008789,
+    "ks_p": 0.8245247047819044,
+    "frac_lowest_10pct": 0.100341796875,
+    "mean_z_over_H": 0.5011978149414062
+   }
+  },
+  {
+   "test": "tests/test_sl_lsm.py::test_small_scale_variance",
+   "result": "passed",
+   "duration_s": 2.95,
+   "numbers": {
+    "u": 1.006672739982605,
+    "v": 0.9905499219894409,
+    "w_norm": 0.9903501288008937
+   }
+  },
+  {
+   "test": "tests/test_sl_lsm.py::test_met_ordering",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {
+    "A": [
+     0.2648096260791155,
+     -0.1401634836131298,
+     3.3918737694640484,
+     1.0350317449400668
+    ],
+    "B": [
+     0.24969299220949717,
+     -0.08116348361312979,
+     3.3899622202831012,
+     0.8062165695012469
+    ],
+    "C": [
+     0.22965614970575884,
+     -0.029411817415046074,
+     3.479958669621045,
+     0.5299301178330715
+    ],
+    "D": [
+     0.20657091794793833,
+     0.0,
+     3.872761993542685,
+     0.0
+    ],
+    "E": [
+     0.16271137707894512,
+     0.031411817415046075,
+     3.741430176537363,
+     0.0
+    ],
+    "F": [
+     0.11665377268836616,
+     0.08982363483009215,
+     3.6127749830526295,
+     0.0
+    ]
+   }
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_obs_dimensions",
+   "result": "passed",
+   "duration_s": 0.03,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_emission_count",
+   "result": "passed",
+   "duration_s": 1.35,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_rng",
+   "result": "passed",
+   "duration_s": 2.17,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_lsm",
+   "result": "passed",
+   "duration_s": 0.06,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_release_correlation",
+   "result": "passed",
+   "duration_s": 0.44,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_los",
+   "result": "passed",
+   "duration_s": 0.0,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_kernel_mass",
+   "result": "passed",
+   "duration_s": 0.01,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_no_grid_gas",
+   "result": "passed",
+   "duration_s": 2.82,
+   "numbers": {}
+  },
+  {
+   "test": "tests/test_suite_basic.py::test_determinism",
+   "result": "passed",
+   "duration_s": 10.27,
+   "numbers": {}
+  }
+ ]
+}

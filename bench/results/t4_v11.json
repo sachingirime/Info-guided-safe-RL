@@ -1,0 +1,438 @@
+{
+ "n_tune": 40,
+ "n_test": 80,
+ "worlds": [
+  "ours",
+  "G-default",
+  "G-tuned"
+ ],
+ "families": {
+  "cast-surge": {
+   "chosen": {
+    "ours": {
+     "variant": "cs_th0.001_ts2",
+     "tune_success": 0.375
+    },
+    "G-default": {
+     "variant": "cs_th0.0001_ts2",
+     "tune_success": 0.25
+    },
+    "G-tuned": {
+     "variant": "cs_th0.0001_ts5",
+     "tune_success": 0.175
+    }
+   },
+   "matrix": {
+    "ours->ours": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.275,
+     "success_ci": [
+      0.18917622847735993,
+      0.38144265284169887
+     ],
+     "median_t_success": 88.69999999999999,
+     "median_t_first_det": 50.5,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 75.31265000136578,
+     "mean_path": 489.722418494719
+    },
+    "ours->G-default": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.2,
+     "success_ci": [
+      0.1270273637929335,
+      0.3004644779658116
+     ],
+     "median_t_success": 91.19999999999999,
+     "median_t_first_det": 52.9,
+     "frac_detected": 0.2,
+     "mean_final_dist": 82.20894820221103,
+     "mean_path": 519.9482820708283,
+     "gap_vs_tuning_world": {
+      "value": -0.07500000000000001,
+      "ci": [
+       -0.1375,
+       -0.012500000000000011
+      ],
+      "significant": true
+     }
+    },
+    "ours->G-tuned": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.1125,
+     "success_ci": [
+      0.06032618694827016,
+      0.20018410865677552
+     ],
+     "median_t_success": 224.6,
+     "median_t_first_det": 66.9,
+     "frac_detected": 0.3375,
+     "mean_final_dist": 80.76617265113653,
+     "mean_path": 576.5410980867803,
+     "gap_vs_tuning_world": {
+      "value": -0.16250000000000003,
+      "ci": [
+       -0.2625,
+       -0.07500000000000001
+      ],
+      "significant": true
+     }
+    },
+    "G-default->ours": {
+     "variant": "cs_th0.0001_ts2",
+     "n": 80,
+     "success": 0.2625,
+     "success_ci": [
+      0.1785727122600286,
+      0.3681916624656446
+     ],
+     "median_t_success": 121.8,
+     "median_t_first_det": 27.0,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 73.96032487286587,
+     "mean_path": 503.8276249685584,
+     "gap_vs_tuning_world": {
+      "value": 0.0625,
+      "ci": [
+       -0.012500000000000011,
+       0.15
+      ],
+      "significant": false
+     }
+    },
+    "G-default->G-default": {
+     "variant": "cs_th0.0001_ts2",
+     "n": 80,
+     "success": 0.2,
+     "success_ci": [
+      0.1270273637929335,
+      0.3004644779658116
+     ],
+     "median_t_success": 93.65,
+     "median_t_first_det": 53.1,
+     "frac_detected": 0.2,
+     "mean_final_dist": 81.49647847860004,
+     "mean_path": 517.2634536267138
+    },
+    "G-default->G-tuned": {
+     "variant": "cs_th0.0001_ts2",
+     "n": 80,
+     "success": 0.0875,
+     "success_ci": [
+      0.04303145464743989,
+      0.1697698277708346
+     ],
+     "median_t_success": 203.7,
+     "median_t_first_det": 51.8,
+     "frac_detected": 0.3,
+     "mean_final_dist": 82.88028858093841,
+     "mean_path": 578.3045419378301,
+     "gap_vs_tuning_world": {
+      "value": -0.11250000000000002,
+      "ci": [
+       -0.1875,
+       -0.037500000000000006
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->ours": {
+     "variant": "cs_th0.0001_ts5",
+     "n": 80,
+     "success": 0.225,
+     "success_ci": [
+      0.1473309016978239,
+      0.3278699532476924
+     ],
+     "median_t_success": 107.69999999999999,
+     "median_t_first_det": 27.5,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 73.35697439013639,
+     "mean_path": 516.2464539254742,
+     "gap_vs_tuning_world": {
+      "value": 0.0625,
+      "ci": [
+       -0.024999999999999994,
+       0.16249999999999998
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->G-default": {
+     "variant": "cs_th0.0001_ts5",
+     "n": 80,
+     "success": 0.2125,
+     "success_ci": [
+      0.13712274217035494,
+      0.3142236061817758
+     ],
+     "median_t_success": 103.89999999999999,
+     "median_t_first_det": 55.25,
+     "frac_detected": 0.2,
+     "mean_final_dist": 81.14074963568,
+     "mean_path": 520.5092097306766,
+     "gap_vs_tuning_world": {
+      "value": 0.04999999999999999,
+      "ci": [
+       -0.012500000000000011,
+       0.12499999999999997
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->G-tuned": {
+     "variant": "cs_th0.0001_ts5",
+     "n": 80,
+     "success": 0.1625,
+     "success_ci": [
+      0.09749727334375492,
+      0.2584310486348333
+     ],
+     "median_t_success": 165.1,
+     "median_t_first_det": 57.8,
+     "frac_detected": 0.275,
+     "mean_final_dist": 78.46176361386809,
+     "mean_path": 551.7926590931055
+    }
+   },
+   "all_variants_test": {
+    "ours": {
+     "cs_th1e-05_ts2": 0.2875,
+     "cs_th1e-05_ts5": 0.2125,
+     "cs_th0.0001_ts2": 0.2625,
+     "cs_th0.0001_ts5": 0.225,
+     "cs_th0.001_ts2": 0.275,
+     "cs_th0.001_ts5": 0.25
+    },
+    "G-default": {
+     "cs_th1e-05_ts2": 0.2,
+     "cs_th1e-05_ts5": 0.2125,
+     "cs_th0.0001_ts2": 0.2,
+     "cs_th0.0001_ts5": 0.2125,
+     "cs_th0.001_ts2": 0.2,
+     "cs_th0.001_ts5": 0.1875
+    },
+    "G-tuned": {
+     "cs_th1e-05_ts2": 0.075,
+     "cs_th1e-05_ts5": 0.1,
+     "cs_th0.0001_ts2": 0.0875,
+     "cs_th0.0001_ts5": 0.1625,
+     "cs_th0.001_ts2": 0.1125,
+     "cs_th0.001_ts5": 0.125
+    }
+   }
+  },
+  "infotaxis": {
+   "chosen": {
+    "ours": {
+     "variant": "info_th1e-05",
+     "tune_success": 0.725
+    },
+    "G-default": {
+     "variant": "info_th0.001",
+     "tune_success": 0.475
+    },
+    "G-tuned": {
+     "variant": "info_th1e-05",
+     "tune_success": 0.425
+    }
+   },
+   "matrix": {
+    "ours->ours": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.4,
+     "success_ci": [
+      0.29961659273441493,
+      0.5095473545185001
+     ],
+     "median_t_success": 133.5,
+     "median_t_first_det": 54.3,
+     "frac_detected": 0.7125,
+     "mean_final_dist": 34.23248693237532,
+     "mean_path": 479.8043579467879
+    },
+    "ours->G-default": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3875,
+     "success_ci": [
+      0.2882439968827771,
+      0.4970654437767524
+     ],
+     "median_t_success": 168.6,
+     "median_t_first_det": 121.0,
+     "frac_detected": 0.5125,
+     "mean_final_dist": 41.83695079716792,
+     "mean_path": 487.92785947130585,
+     "gap_vs_tuning_world": {
+      "value": -0.012500000000000011,
+      "ci": [
+       -0.125,
+       0.10000000000000003
+      ],
+      "significant": false
+     }
+    },
+    "ours->G-tuned": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.25,
+     "success_ci": [
+      0.1680610581209431,
+      0.3548488100113445
+     ],
+     "median_t_success": 192.95,
+     "median_t_first_det": 68.7,
+     "frac_detected": 0.5125,
+     "mean_final_dist": 45.38902987588658,
+     "mean_path": 542.3552089141366,
+     "gap_vs_tuning_world": {
+      "value": -0.15000000000000002,
+      "ci": [
+       -0.275,
+       -0.025000000000000022
+      ],
+      "significant": true
+     }
+    },
+    "G-default->ours": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.5375,
+     "success_ci": [
+      0.4290416436680269,
+      0.6425218761121299
+     ],
+     "median_t_success": 169.7,
+     "median_t_first_det": 63.6,
+     "frac_detected": 0.7375,
+     "mean_final_dist": 36.76187955604399,
+     "mean_path": 458.4425025074421,
+     "gap_vs_tuning_world": {
+      "value": 0.21249999999999997,
+      "ci": [
+       0.11249999999999993,
+       0.325
+      ],
+      "significant": true
+     }
+    },
+    "G-default->G-default": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.325,
+     "success_ci": [
+      0.2324401249422747,
+      0.43359678275032654
+     ],
+     "median_t_success": 157.45,
+     "median_t_first_det": 125.85,
+     "frac_detected": 0.45,
+     "mean_final_dist": 65.52348607511053,
+     "mean_path": 509.50622226319666
+    },
+    "G-default->G-tuned": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.3125,
+     "success_ci": [
+      0.22150258327847644,
+      0.4206798178207392
+     ],
+     "median_t_success": 193.79999999999998,
+     "median_t_first_det": 54.9,
+     "frac_detected": 0.5375,
+     "mean_final_dist": 59.63760673879996,
+     "mean_path": 531.3778198327751,
+     "gap_vs_tuning_world": {
+      "value": -0.012500000000000011,
+      "ci": [
+       -0.125,
+       0.10000000000000003
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->ours": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.4,
+     "success_ci": [
+      0.29961659273441493,
+      0.5095473545185001
+     ],
+     "median_t_success": 133.5,
+     "median_t_first_det": 54.3,
+     "frac_detected": 0.7125,
+     "mean_final_dist": 34.23248693237532,
+     "mean_path": 479.8043579467879,
+     "gap_vs_tuning_world": {
+      "value": 0.15000000000000002,
+      "ci": [
+       0.025000000000000022,
+       0.27499999999999997
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->G-default": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3875,
+     "success_ci": [
+      0.2882439968827771,
+      0.4970654437767524
+     ],
+     "median_t_success": 168.6,
+     "median_t_first_det": 121.0,
+     "frac_detected": 0.5125,
+     "mean_final_dist": 41.83695079716792,
+     "mean_path": 487.92785947130585,
+     "gap_vs_tuning_world": {
+      "value": 0.1375,
+      "ci": [
+       0.012500000000000011,
+       0.25
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->G-tuned": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.25,
+     "success_ci": [
+      0.1680610581209431,
+      0.3548488100113445
+     ],
+     "median_t_success": 192.95,
+     "median_t_first_det": 68.7,
+     "frac_detected": 0.5125,
+     "mean_final_dist": 45.38902987588658,
+     "mean_path": 542.3552089141366
+    }
+   },
+   "all_variants_test": {
+    "ours": {
+     "info_th1e-05": 0.4,
+     "info_th0.0001": 0.45,
+     "info_th0.001": 0.5375
+    },
+    "G-default": {
+     "info_th1e-05": 0.3875,
+     "info_th0.0001": 0.375,
+     "info_th0.001": 0.325
+    },
+    "G-tuned": {
+     "info_th1e-05": 0.25,
+     "info_th0.0001": 0.2375,
+     "info_th0.001": 0.3125
+    }
+   }
+  }
+ }
+}

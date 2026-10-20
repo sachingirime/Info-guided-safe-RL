@@ -1,0 +1,438 @@
+{
+ "n_tune": 40,
+ "n_test": 80,
+ "worlds": [
+  "ours",
+  "G-default",
+  "G-tuned"
+ ],
+ "families": {
+  "cast-surge": {
+   "chosen": {
+    "ours": {
+     "variant": "cs_th0.001_ts2",
+     "tune_success": 0.125
+    },
+    "G-default": {
+     "variant": "cs_th1e-05_ts2",
+     "tune_success": 0.225
+    },
+    "G-tuned": {
+     "variant": "cs_th1e-05_ts2",
+     "tune_success": 0.175
+    }
+   },
+   "matrix": {
+    "ours->ours": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.0125,
+     "success_ci": [
+      0.002209918618306224,
+      0.06746432423965451
+     ],
+     "median_t_success": 87.39999999999999,
+     "median_t_first_det": 46.15,
+     "frac_detected": 0.25,
+     "mean_final_dist": 83.11949372513159,
+     "mean_path": 589.4239147348119
+    },
+    "ours->G-default": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.2125,
+     "success_ci": [
+      0.13712274217035494,
+      0.3142236061817758
+     ],
+     "median_t_success": 101.3,
+     "median_t_first_det": 59.7,
+     "frac_detected": 0.2125,
+     "mean_final_dist": 81.45194078979384,
+     "mean_path": 521.6628942483712,
+     "gap_vs_tuning_world": {
+      "value": 0.19999999999999998,
+      "ci": [
+       0.1125,
+       0.2875
+      ],
+      "significant": true
+     }
+    },
+    "ours->G-tuned": {
+     "variant": "cs_th0.001_ts2",
+     "n": 80,
+     "success": 0.05,
+     "success_ci": [
+      0.01961323712729557,
+      0.121624525510822
+     ],
+     "median_t_success": 225.25,
+     "median_t_first_det": 66.8,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 82.15295841226984,
+     "mean_path": 586.614916157421,
+     "gap_vs_tuning_world": {
+      "value": 0.037500000000000006,
+      "ci": [
+       -0.0125,
+       0.1
+      ],
+      "significant": false
+     }
+    },
+    "G-default->ours": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.0,
+     "success_ci": [
+      0.0,
+      0.0458197362645751
+     ],
+     "median_t_success": null,
+     "median_t_first_det": 45.8,
+     "frac_detected": 0.275,
+     "mean_final_dist": 81.46580624217403,
+     "mean_path": 594.7515645933396,
+     "gap_vs_tuning_world": {
+      "value": -0.2125,
+      "ci": [
+       -0.3,
+       -0.125
+      ],
+      "significant": true
+     }
+    },
+    "G-default->G-default": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.2125,
+     "success_ci": [
+      0.13712274217035494,
+      0.3142236061817758
+     ],
+     "median_t_success": 101.3,
+     "median_t_first_det": 59.7,
+     "frac_detected": 0.2125,
+     "mean_final_dist": 81.45194078979384,
+     "mean_path": 521.6628942483712
+    },
+    "G-default->G-tuned": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.05,
+     "success_ci": [
+      0.01961323712729557,
+      0.121624525510822
+     ],
+     "median_t_success": 225.25,
+     "median_t_first_det": 66.8,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 82.15295841226984,
+     "mean_path": 586.614916157421,
+     "gap_vs_tuning_world": {
+      "value": -0.16249999999999998,
+      "ci": [
+       -0.24999999999999997,
+       -0.0875
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->ours": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.0,
+     "success_ci": [
+      0.0,
+      0.0458197362645751
+     ],
+     "median_t_success": null,
+     "median_t_first_det": 45.8,
+     "frac_detected": 0.275,
+     "mean_final_dist": 81.46580624217403,
+     "mean_path": 594.7515645933396,
+     "gap_vs_tuning_world": {
+      "value": -0.05,
+      "ci": [
+       -0.1,
+       -0.0125
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->G-default": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.2125,
+     "success_ci": [
+      0.13712274217035494,
+      0.3142236061817758
+     ],
+     "median_t_success": 101.3,
+     "median_t_first_det": 59.7,
+     "frac_detected": 0.2125,
+     "mean_final_dist": 81.45194078979384,
+     "mean_path": 521.6628942483712,
+     "gap_vs_tuning_world": {
+      "value": 0.16249999999999998,
+      "ci": [
+       0.0875,
+       0.24999999999999997
+      ],
+      "significant": true
+     }
+    },
+    "G-tuned->G-tuned": {
+     "variant": "cs_th1e-05_ts2",
+     "n": 80,
+     "success": 0.05,
+     "success_ci": [
+      0.01961323712729557,
+      0.121624525510822
+     ],
+     "median_t_success": 225.25,
+     "median_t_first_det": 66.8,
+     "frac_detected": 0.3125,
+     "mean_final_dist": 82.15295841226984,
+     "mean_path": 586.614916157421
+    }
+   },
+   "all_variants_test": {
+    "ours": {
+     "cs_th1e-05_ts2": 0.0,
+     "cs_th1e-05_ts5": 0.0125,
+     "cs_th0.0001_ts2": 0.0125,
+     "cs_th0.0001_ts5": 0.0,
+     "cs_th0.001_ts2": 0.0125,
+     "cs_th0.001_ts5": 0.0
+    },
+    "G-default": {
+     "cs_th1e-05_ts2": 0.2125,
+     "cs_th1e-05_ts5": 0.2125,
+     "cs_th0.0001_ts2": 0.2125,
+     "cs_th0.0001_ts5": 0.2125,
+     "cs_th0.001_ts2": 0.2125,
+     "cs_th0.001_ts5": 0.2125
+    },
+    "G-tuned": {
+     "cs_th1e-05_ts2": 0.05,
+     "cs_th1e-05_ts5": 0.175,
+     "cs_th0.0001_ts2": 0.05,
+     "cs_th0.0001_ts5": 0.175,
+     "cs_th0.001_ts2": 0.05,
+     "cs_th0.001_ts5": 0.175
+    }
+   }
+  },
+  "infotaxis": {
+   "chosen": {
+    "ours": {
+     "variant": "info_th0.001",
+     "tune_success": 0.575
+    },
+    "G-default": {
+     "variant": "info_th1e-05",
+     "tune_success": 0.475
+    },
+    "G-tuned": {
+     "variant": "info_th1e-05",
+     "tune_success": 0.475
+    }
+   },
+   "matrix": {
+    "ours->ours": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.5625,
+     "success_ci": [
+      0.4534093786865696,
+      0.6658631542803586
+     ],
+     "median_t_success": 130.6,
+     "median_t_first_det": 65.9,
+     "frac_detected": 0.7375,
+     "mean_final_dist": 34.70954531849691,
+     "mean_path": 433.1056193454213
+    },
+    "ours->G-default": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.3625,
+     "success_ci": [
+      0.26570633724259446,
+      0.47189409023016365
+     ],
+     "median_t_success": 121.89999999999999,
+     "median_t_first_det": 68.2,
+     "frac_detected": 0.4875,
+     "mean_final_dist": 58.176853949998666,
+     "mean_path": 485.4147404701106,
+     "gap_vs_tuning_world": {
+      "value": -0.2,
+      "ci": [
+       -0.31250000000000006,
+       -0.08750000000000002
+      ],
+      "significant": true
+     }
+    },
+    "ours->G-tuned": {
+     "variant": "info_th0.001",
+     "n": 80,
+     "success": 0.2875,
+     "success_ci": [
+      0.19986786008396254,
+      0.3946055278284818
+     ],
+     "median_t_success": 171.6,
+     "median_t_first_det": 48.2,
+     "frac_detected": 0.4625,
+     "mean_final_dist": 53.01180312598619,
+     "mean_path": 522.7682808602269,
+     "gap_vs_tuning_world": {
+      "value": -0.275,
+      "ci": [
+       -0.4003125,
+       -0.1375
+      ],
+      "significant": true
+     }
+    },
+    "G-default->ours": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3625,
+     "success_ci": [
+      0.26570633724259446,
+      0.47189409023016365
+     ],
+     "median_t_success": 151.9,
+     "median_t_first_det": 63.6,
+     "frac_detected": 0.7375,
+     "mean_final_dist": 40.48638296699494,
+     "mean_path": 491.7197001034536,
+     "gap_vs_tuning_world": {
+      "value": 0.0,
+      "ci": [
+       -0.125,
+       0.125
+      ],
+      "significant": false
+     }
+    },
+    "G-default->G-default": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3625,
+     "success_ci": [
+      0.26570633724259446,
+      0.47189409023016365
+     ],
+     "median_t_success": 121.89999999999999,
+     "median_t_first_det": 68.2,
+     "frac_detected": 0.4875,
+     "mean_final_dist": 58.176853949998666,
+     "mean_path": 485.4147404701106
+    },
+    "G-default->G-tuned": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.2875,
+     "success_ci": [
+      0.19986786008396254,
+      0.3946055278284818
+     ],
+     "median_t_success": 171.6,
+     "median_t_first_det": 48.2,
+     "frac_detected": 0.4625,
+     "mean_final_dist": 53.01180312598619,
+     "mean_path": 522.7682808602269,
+     "gap_vs_tuning_world": {
+      "value": -0.07500000000000001,
+      "ci": [
+       -0.18781250000000002,
+       0.03750000000000003
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->ours": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3625,
+     "success_ci": [
+      0.26570633724259446,
+      0.47189409023016365
+     ],
+     "median_t_success": 151.9,
+     "median_t_first_det": 63.6,
+     "frac_detected": 0.7375,
+     "mean_final_dist": 40.48638296699494,
+     "mean_path": 491.7197001034536,
+     "gap_vs_tuning_world": {
+      "value": 0.07500000000000001,
+      "ci": [
+       -0.04999999999999999,
+       0.2
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->G-default": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.3625,
+     "success_ci": [
+      0.26570633724259446,
+      0.47189409023016365
+     ],
+     "median_t_success": 121.89999999999999,
+     "median_t_first_det": 68.2,
+     "frac_detected": 0.4875,
+     "mean_final_dist": 58.176853949998666,
+     "mean_path": 485.4147404701106,
+     "gap_vs_tuning_world": {
+      "value": 0.07500000000000001,
+      "ci": [
+       -0.03749999999999998,
+       0.1875
+      ],
+      "significant": false
+     }
+    },
+    "G-tuned->G-tuned": {
+     "variant": "info_th1e-05",
+     "n": 80,
+     "success": 0.2875,
+     "success_ci": [
+      0.19986786008396254,
+      0.3946055278284818
+     ],
+     "median_t_success": 171.6,
+     "median_t_first_det": 48.2,
+     "frac_detected": 0.4625,
+     "mean_final_dist": 53.01180312598619,
+     "mean_path": 522.7682808602269
+    }
+   },
+   "all_variants_test": {
+    "ours": {
+     "info_th1e-05": 0.3625,
+     "info_th0.0001": 0.4125,
+     "info_th0.001": 0.5625
+    },
+    "G-default": {
+     "info_th1e-05": 0.3625,
+     "info_th0.0001": 0.3625,
+     "info_th0.001": 0.3625
+    },
+    "G-tuned": {
+     "info_th1e-05": 0.2875,
+     "info_th0.0001": 0.2875,
+     "info_th0.001": 0.2875
+    }
+   }
+  }
+ }
+}

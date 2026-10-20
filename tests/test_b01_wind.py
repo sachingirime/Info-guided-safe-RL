@@ -37,7 +37,14 @@ def test_calm_wind(U, record):
     assert obs_ok
     for a in (sim.u0.numpy(), pos, vel, C):
         assert np.isfinite(a).all()
-    assert np.all(sig >= sim.sigma_min) and np.isfinite(TL).all() and np.isfinite(TE).all()
+    if sim.surface_layer:      # v1.1: turbulence = surface-layer small scales (u* floor via U ≥ 0.3 m/s)
+        zs = float(sim.source_pos[2])
+        ss, Ts = np.array(sim.sl_sigma(zs)), np.array(sim.sl_T(zs))
+        record(sl_sigma=ss, sl_T=Ts)
+        assert np.all(ss > 0.01) and np.isfinite(Ts).all() and np.all(Ts > 0)
+        assert np.isfinite(TL).all() and np.isfinite(TE).all()
+    else:
+        assert np.all(sig >= sim.sigma_min) and np.isfinite(TL).all() and np.isfinite(TE).all()
     assert len(spreads) >= 3 and all(b > a for a, b in zip(spreads, spreads[1:])), spreads   # grows with age
     assert sim.n_emitted == len(pos) + sim.n_exited + sim.n_overwritten
 
