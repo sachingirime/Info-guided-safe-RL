@@ -170,8 +170,8 @@ def fig_t3(vth="4V"):
     save(fig, "t3_whiff_stats")
 
 
-def fig_t4():
-    r = json.load(open(os.path.join(RES, "t4.json")))
+def fig_t4(name="t4"):
+    r = json.load(open(os.path.join(RES, f"{name}.json")))
     W = r["worlds"]
     names = {"ours": "ours", "G-default": "GADEN\nexample", "G-tuned": "GADEN\ntuned"}
     fig, axs = plt.subplots(1, len(r["families"]), figsize=(6.4, 2.7))
@@ -189,11 +189,93 @@ def fig_t4():
         ax.set_yticks(range(len(W))); ax.set_yticklabels([names[w] for w in W], fontsize=7)
         ax.set_xlabel("tested in"); ax.set_ylabel("tuned in"); ax.set_title(f"{fam}: success rate"); ax.grid(False)
     fig.tight_layout()
-    save(fig, "t4_transfer")
+    save(fig, "t4_transfer" if name == "t4" else f"{name}_transfer")
+
+
+def fig_t2_v11():
+    r = json.load(open(os.path.join(RES, "t2_v11.json")))
+    sys.path.insert(0, HERE)
+    import t2_stats as ts
+    import t2_final as tf
+    table, _, base = ts.load_runs()
+    runs = {}
+    for e, rr in base.items():
+        v = json.load(open(os.path.join(HERE, "data", "t2_variants", r["tag"], f"run_{e:02d}.json")))["models"]
+        m = dict(rr["models"]); m["v1.1"] = tf.ensemble(v, "s", (1, 2, 3)); m["v1.0"] = tf.ensemble(rr["models"], "ours_s", (1, 2, 3))
+        runs[e] = {"models": m}
+    models = [("v1.1", "v1.1 (surface-layer LSM)", C_SERIES[0]), ("v1.0", "v1.0 (Briggs-fitted)", C_SERIES[2]),
+              ("G-ourwind-n0.7", "GADEN tuned (0.7)", C_SERIES[1])]
+    fig, axs = plt.subplots(2, 3, figsize=(7.0, 4.8))
+    for j, (q, lab, lo, hi) in enumerate((("cmax_Q", "arc-max C/Q (s/m³)", 1e-5, 1e-1),
+                                          ("cwic_Q", "CWIC/Q (s/m²)", 1e-3, 1.0), ("sigma_y", "σ$_y$ (m)", 1.0, 100.0))):
+        ax = axs[0, j]
+        for m, ml, col in models:
+            pl = ts.pairs(table, runs, m, q)
+            co = np.array([p[2] for p in pl]); cp = np.maximum([p[3] for p in pl], lo)
+            ax.scatter(co, cp, s=7, color=col, alpha=0.6, linewidths=0, label=ml)
+        xx = np.array([lo, hi]); ax.plot(xx, xx, color=C_REF, lw=0.8)
+        for f in (0.5, 2.0):
+            ax.plot(xx, f * xx, color=C_MUTED, lw=0.6, ls="--")
+        ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+        ax.set_xlabel("observed " + lab, fontsize=7.5); ax.set_title(lab)
+        ax2 = axs[1, j]
+        for m, ml, col in models:
+            st = r["stats"]["even_heldout"][q][m]; p, c = st["point"], st["ci"]
+            ax2.errorbar(p["MG"], p["VG"], xerr=[[p["MG"] - c["MG"][0]], [c["MG"][1] - p["MG"]]],
+                         yerr=[[p["VG"] - c["VG"][0]], [c["VG"][1] - p["VG"]]], fmt="o", ms=5, color=col, capsize=2, lw=1.0, label=ml)
+        mg = np.logspace(np.log10(0.25), np.log10(4.0), 200)
+        ax2.plot(mg, np.exp(np.log(mg) ** 2), color=C_MUTED, lw=0.8, ls=":")
+        ax2.set_xscale("log"); ax2.set_yscale("log"); ax2.axvline(1, color=C_REF, lw=0.6)
+        ax2.set_xlim(0.25, 4.0); ax2.set_ylim(1.0, 8.0)
+        ax2.set_xticks([0.25, 0.5, 1, 2, 4]); ax2.set_xticklabels(["0.25", "0.5", "1", "2", "4"])
+        ax2.set_yticks([1, 2, 4, 8]); ax2.set_yticklabels(["1", "2", "4", "8"]); ax2.minorticks_off()
+        ax2.set_xlabel("MG (>1: under-prediction)", fontsize=7.5)
+    axs[0, 0].set_ylabel("predicted"); axs[1, 0].set_ylabel("VG (held-out even runs)")
+    axs[0, 0].legend(frameon=False, fontsize=6.5, loc="upper left", markerscale=1.5)
+    fig.tight_layout()
+    save(fig, "t2_v11")
+
+
+def fig_t3a():
+    r = json.load(open(os.path.join(HERE, "data", "t3_rescore.json")))
+    sets = ("desert_low_wind", "desert_high_wind")
+    series = [("sl_sg_s03k01", "ours_s1", "v1.1", C_SERIES[0], "-"), ("v1.0-bench", "ours_s1", "v1.0", C_SERIES[2], ":"),
+              ("v1.0-bench", "G-default", "GADEN example", C_SERIES[1], "--")]
+    fig, axs = plt.subplots(2, 2, figsize=(6.4, 4.4), squeeze=False)
+    for i, sname in enumerate(sets):
+        d = r["sl_sg_s03k01"][sname]["matched"]["data"]
+        xc = [np.mean(b["bin"]) for b in d]
+        for j, (k, lab) in enumerate((("dur_mean", "mean whiff duration (s)"), ("blank_median", "median blank (s)"))):
+            ax = axs[i, j]
+            ax.plot(xc, [b[k] for b in d], "o-", color=C_REF, ms=4, lw=1.2, label="data")
+            for tag, mk, ml, col, ls in series:
+                mm = r[tag][sname]["matched"]["models"][mk]
+                ys = [b.get(k, np.nan) if b.get("matched") else np.nan for b in mm]
+                ax.plot(xc, ys, ls, color=col, marker="s", ms=3, lw=1.3, label=ml)
+            ax.set_yscale("log")
+            if i == 1:
+                ax.set_xlabel("distance from source (m)")
+            ax.set_title(lab if i == 0 else "")
+            if j == 0:
+                ax.set_ylabel(f"{sname.replace('_', ' ')}")
+    axs[0, 0].legend(frameon=False, fontsize=7)
+    import textwrap
+    from matplotlib.ticker import FuncFormatter, LogLocator
+    for ax in axs.ravel():
+        ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+        ax.yaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
+    note = ("At matched intermittency per distance bin (samples within 3 m of each side's streakline): invariant to "
+            "the sensor's unknown, saturating transfer function. Gaps: the model plume reaches the sensor less often "
+            "than the data whiff rate in that bin.")
+    fig.text(0.01, -0.05, textwrap.fill(note, 120), fontsize=6.5, color=C_MUTED)
+    fig.tight_layout()
+    save(fig, "t3a_whiff_timing")
 
 
 if __name__ == "__main__":
     which = sys.argv[1:] or ["t1", "t2"]
     for w in which:
-        {"t1": fig_t1, "t2": fig_t2, "t3": fig_t3, "t4": fig_t4}[w]()
+        {"t1": fig_t1, "t2": fig_t2, "t3": fig_t3, "t4": fig_t4, "t2_v11": fig_t2_v11, "t3a": fig_t3a,
+         "t4_v11": lambda: fig_t4("t4_v11")}[w]()
         print("figure", w)

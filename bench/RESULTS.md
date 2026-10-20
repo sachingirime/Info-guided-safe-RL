@@ -1,4 +1,7 @@
-# GADEN benchmark: results
+# GADEN benchmark: results (v1.0-sim)
+
+> **Superseded:** for the v1.1 simulator, see `bench/RESULTS_v11.md`. This file reports the v1.0
+> baseline and keeps an erratum on T3.
 
 **Models compared:**
 - **Ours:** `v1.0-sim` (as shipped unless stated).
@@ -102,6 +105,19 @@ Results over all 192 run–arc pairs:
 **Independence caveat:** our T_L table was fitted to Briggs (1973), whose open-country curves draw partly on Prairie Grass. **For our model T2 is a consistency check, not an independent validation.** For GADEN it is independent.
 
 ## T3: fluctuations along a real sensor track (`figs/t3_whiff_stats`)
+
+> **Erratum (2026-10-19, superseded by `RESULTS_v11.md`).** The test design below is invalid for
+> intermittency versus distance. The field sensor saturates at 10.29 V, and its whiff peaks fall only
+> 1.4× from 2.5 to 40 m, so its transfer function is strongly compressive and unknown. Calibrating
+> the model threshold to the data's 0–5 m intermittency therefore penalises any physical dilution.
+> The conclusion "ours loses whiffs beyond about 10 m" does not stand as stated.
+>
+> The replacement tests are:
+> - **T3a:** whiff timing at matched intermittency per bin, invariant to the sensor response;
+> - **T3b:** wind at the sensor.
+>
+> On those, v1.0's real failures were whiffs 2–4× too long and too few, and a sensor wind 2–8× too
+> steady. Both are fixed in v1.1.
 
 **Data:** Nag & van Breugel (2024), desert runs:
 - low wind: 6448 s, class A by σ_θ = 32.5°;

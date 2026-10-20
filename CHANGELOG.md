@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.1 (branch `sim-v1.1`, from `gaden-bench` `81089f9`)
+
+**Why:** the GADEN and field-data benchmark (`bench/RESULTS.md`) found these weaknesses:
+- whiffs 2–4× too long and too few;
+- a sensor wind 2–8× too steady and uncoupled from the plume;
+- σ_y about 25% narrow and CWIC 2× low in unstable air vs Prairie Grass;
+- a calibration that was circular for Prairie Grass.
+
+Evidence for every change is in `bench/RESULTS_v11.md`.
+
+| Change | v1.0 | v1.1 | Why / evidence |
+|---|---|---|---|
+| Dispersion model | Homogeneous OU per puff; σ = a·U, T_L fitted to Briggs | `surface_layer=True`: small-scale surface-layer turbulence per puff (u*, L, ε(z), T(z) = 2σ²/(C₀ε), C₀ = 3.125, Thomson drift) + convective coherent lateral eddies (unstable) | Briggs-fitted T_L implied ε ≈ 10⁻⁵ m²/s³ (surface layer: 10⁻²–10⁻¹), so puffs never separated. Prairie Grass σ_y FAC2 0.84 → 0.98; CWIC 0.93 → 1.00 |
+| Met inputs | Class only | u*, 1/L, z_i from (class, U₁₀, z₀ = 0.03 m) via Golder; or `met=dict(...)` | Physical turbulence; measured inputs for validation |
+| Puff σ₀ / K_rel / release interval | 1.0 m / 0.05 m²/s / 0.2 s | 0.3 m / 0.01 m²/s / 0.05 s (`N_PUFFS` 10240) | Pre-registered selection (`bench/results/v11_selection.json`) |
+| Wind below the first cell centre | Clamped to the 2 m value | `subgrid_wind=True`: power law continued to 0.1 m | Near-ground transport; selected by the rule (costs peak C, see RESULTS_v11) |
+| Env anemometer | Resolved + independent OU (σ = LSM σ, τ = 1 s) | Resolved + `coherent_velocity()` (shared eddies, Taylor-lagged) + local small-scale OU (σ_i(z), T_i(z)) | Field σ_θ 11–32°: v1.0 gave 1.4–6.3°, v1.1 gives 13–26°. Wind changes now predict plume meander |
+| `wind_noise_tau` env argument | τ of the anemometer noise | Removed | Superseded |
+| `HybridFluidPuffSimulation` defaults | — | Unchanged (v1.0 behaviour unless `surface_layer=True`); `GaussianPuffEnv.SIM_DEFAULTS` selects v1.1 | Reproducibility of v1.0 results; v1.0 path verified bit-identical |
+| Tests | — | `tests/test_sl_lsm.py`: well-mixed criterion with a negative control, variances, met. Updated: `test_anemometer_coherent` (was `test_anemometer_noise`), `test_calm_wind` (active model's turbulence floor) | Behaviour changed by design; intent kept |
+
+**Known limitations** (`bench/RESULTS_v11.md`):
+- arc-max C about 30% low in A–D;
+- E–F σ_z wide at short range;
+- no slow meander in neutral air (direction time scale 5 s vs 37 s);
+- far-field blanks too long;
+- 13× real time with queries (v1.0: 47×).
+
 ## v1.0-sim (branch `sim-fix`, from tag `pre-fix` = `1d30cdb`)
 
 Every behaviour change, with the old and new value. Validation numbers are in

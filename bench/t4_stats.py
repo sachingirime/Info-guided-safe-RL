@@ -15,6 +15,7 @@ paired bootstrap 95% CI over test episodes (same scenarios in both worlds).
 import glob
 import json
 import os
+import sys
 
 import numpy as np
 
@@ -32,9 +33,9 @@ def wilson(k, n, z=1.96):
     return [max(float(c - h), 0.0), min(float(c + h), 1.0)]
 
 
-def load():
+def load(sub="t4"):
     eps = {}
-    for f in glob.glob(os.path.join(HERE, "data", "t4", "ep_*.json")):
+    for f in glob.glob(os.path.join(HERE, "data", sub, "ep_*.json")):
         r = json.load(open(f)); eps[r["ep"]] = r
     return eps
 
@@ -47,7 +48,8 @@ def table_for(eps, ids, world, variant):
 
 
 def main():
-    eps = load()
+    sub = sys.argv[1] if len(sys.argv) > 1 else "t4"
+    eps = load(sub)
     worlds = list(next(iter(eps.values()))["results"])
     variants = list(eps[next(iter(eps))]["results"][worlds[0]])
     fams = {"cast-surge": [v for v in variants if v.startswith("cs_")],
@@ -81,7 +83,7 @@ def main():
         # all-variant table on test episodes (oracle view)
         F["all_variants_test"] = {B: {v: float(table_for(eps, test, B, v)[1].mean()) for v in vs} for B in worlds}
         res["families"][fam] = F
-    out = os.path.join(HERE, "results", "t4.json")
+    out = os.path.join(HERE, "results", "t4.json" if sub == "t4" else f"{sub}.json")
     with open(out, "w") as f:
         json.dump(res, f, indent=1)
     for fam, F in res["families"].items():

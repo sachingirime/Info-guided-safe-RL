@@ -139,11 +139,17 @@ def make_agents():
     return ag
 
 
-def run_episode(ep, tuned_noise, gaden_threads=1):
+V11 = dict(surface_layer=True, subgrid_wind=True, K_rel=0.01)   # GaussianPuffEnv.SIM_DEFAULTS (v1.1)
+
+
+def run_episode(ep, tuned_noise, gaden_threads=1, version="v1.0"):
     angle, wseed, src, p0 = scenario(ep)
+    v11 = version == "v1.1"
     sim = sf.HybridFluidPuffSimulation(wind_center_angle=angle, wind_angle_range=20.0, wind_base_speed=1.5,
-                                       wind_seed=wseed, max_puffs=2560)
-    sim.Q = Q_ENV; sim.sigma_0 = 1.0; sim.emit_interval = 0.2
+                                       wind_seed=wseed, max_puffs=10240 if v11 else 2560, **(V11 if v11 else {}))
+    sim.Q = Q_ENV; sim.sigma_0 = 0.3 if v11 else 1.0; sim.emit_interval = 0.05 if v11 else 0.2
+    rng_an = np.random.default_rng([ep, 99])
+    anemo_ss = None
     sim.set_stability_class("D"); sim.set_obstacles([], []); sim.source_pos = src.astype(np.float32)
     wd = os.path.join(OUT, f"work_{ep:03d}"); os.makedirs(wd, exist_ok=True)
     env_bin = pr.gaden_env(sim, os.path.join(wd, "env.bin"))
@@ -173,6 +179,13 @@ def run_episode(ep, tuned_noise, gaden_threads=1):
                     else:
                         c = gads[w].query_kgm3(P) * (Q_ENV / pr.Q_TRACER)
                     wind = pr.trilinear(u, P, sim.dx)[:, :2]
+                    if v11:   # v1.1 anemometer: + coherent eddies + local small-scale turbulence (shared by worlds)
+                        coh = sim.coherent_velocity(P)[:, :2]      # depends on each agent's position
+                        if w == worlds[0]:
+                            if anemo_ss is None:
+                                anemo_ss = np.array(sim.sl_sigma(float(src[2]))) * rng_an.standard_normal((len(names), 3))
+                            anemo_ss = np.array([sim.small_scale_ou(a, float(src[2]), DT, rng_an) for a in anemo_ss])
+                        wind = wind + coh + anemo_ss[:, :2]
                     for k, n in enumerate(names):
                         r = rec[w][n]
                         if r["t_success"] is not None:
@@ -201,15 +214,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", default="0-119")
     ap.add_argument("--gaden-tuned-noise", type=float, required=True)
+    ap.add_argument("--version", default="v1.0", choices=["v1.0", "v1.1"])
     a = ap.parse_args()
     lo, hi = (int(v) for v in a.episodes.split("-"))
+    global OUT
+    if a.version == "v1.1":
+        OUT = OUT + "_v11"
     os.makedirs(OUT, exist_ok=True)
     for ep in range(lo, hi + 1):
         path = os.path.join(OUT, f"ep_{ep:03d}.json")
         if os.path.exists(path):
             continue
-        r = run_episode(ep, a.gaden_tuned_noise)
-        r["gaden_tuned_noise"] = a.gaden_tuned_noise
+        r = run_episode(ep, a.gaden_tuned_noise, version=a.version)
+        r["gaden_tuned_noise"] = a.gaden_tuned_noise; r["version"] = a.version
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(r, f); f.flush(); os.fsync(f.fileno())

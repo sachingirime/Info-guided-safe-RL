@@ -166,6 +166,7 @@ def test_anemometer_coherent(record):
     p_up = src - np.array([*(20.0 * d), 0.0])          # upwind: no lag
     clean = env._sample_wind_at(env.p)
     obs = env._observed_wind()
+    small = env._anemo_ss.copy()            # v1.1 surface layer: local small-scale state
     off = GaussianPuffEnv(seed=0, warmup_s=5.0, wind_noise=False)
     off.reset(seed=2)
     exact_off = bool(np.array_equal(off._observed_wind(), off._sample_wind_at(off.p)))
@@ -176,8 +177,19 @@ def test_anemometer_coherent(record):
     assert np.array_equal(at_src, vs[-1])
     assert np.array_equal(sim.coherent_velocity(p_dn[None])[0], expect_dn)
     assert np.array_equal(sim.coherent_velocity(p_up[None])[0], vs[-1])
-    assert np.allclose(obs - clean, sim.coherent_velocity(env.p[None])[0])
+    assert np.allclose(obs - clean - small, sim.coherent_velocity(env.p[None])[0])
     assert exact_off
+    # small-scale anemometer turbulence: σ_i(z) and OU memory T_i(z) at the drone height
+    if sim.surface_layer:
+        env._sample_wind_at = lambda p: clean
+        coh = sim.coherent_velocity(env.p[None])[0]
+        n = np.array([env._observed_wind() - clean - coh for _ in range(100_000)])
+        z = float(env.p[2]); sig = np.array(sim.sl_sigma(z)); T = np.array(sim.sl_T(z))
+        lag = int(round(1.0 / env.DT))
+        rho = np.array([np.corrcoef(n[:-lag, a], n[lag:, a])[0, 1] for a in range(3)])
+        record(small_std_over_sigma=(n.std(0) / sig).tolist(), rho_1s=rho.tolist(), rho_ref=np.exp(-1.0 / T).tolist())
+        assert np.all(np.abs(n.std(0) / sig - 1) < 0.1)       # N_eff ≈ 10⁵·DT/T ≥ 2500
+        assert np.all(np.abs(rho - np.exp(-1.0 / T)) < 0.05)
     assert np.all(sim_ind.coherent_velocity(np.zeros((1, 3))) == 0)
 
 

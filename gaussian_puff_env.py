@@ -141,14 +141,18 @@ class GaussianPuffEnv(gym.Env):
     # ------------------------------------------------------------------
     Q_INIT      = 5.0       # kg/s — methane mass emission rate
     Q_GROWTH    = 0.0       # kg/s² — emission rate increase over time (0 = constant)
-    PUFF_PERIOD = 0.2       # s — interval between puff emissions
-    N_PUFFS     = 2560      # max Lagrangian puff particles = 512 s of puffs.  Was 1024 (slow
-                            # near-ground puffs outlive 205 s: 20–213 overwritten per 200 s
-                            # episode), then 2048 (a 1 h run overwrote 24 puffs; the overflow
-                            # warning asked for ≥ 2560).  See sim.n_overwritten.
+    PUFF_PERIOD = 0.05      # s — interval between puff emissions (v1.0: 0.2 with σ₀ = 1 m;
+                            # 0.3 m puffs need closer spacing than U·0.2 s)
+    N_PUFFS     = 10240     # max Lagrangian puff particles = 512 s of puffs (v1.0: 2560 at 0.2 s;
+                            # 1024 overflowed for slow near-ground puffs).  See sim.n_overwritten.
 
-    SIGMA_0 = 1.0           # m — initial puff standard deviation (was 2.0: larger than
-                            # Briggs D σ_z at 25 m; LSM T_L table is fitted for σ₀ = 1 m)
+    SIGMA_0 = 0.3           # m — initial puff standard deviation (v1.0: 1.0).  v1.1 selection,
+                            # bench/results/v11_selection.json.
+
+    # v1.1 dispersion model (bench/RESULTS_v11.md): surface-layer two-scale LSM,
+    # sub-grid near-ground wind, slower relative puff growth.  Override via
+    # sim_kwargs (e.g. surface_layer=False, K_rel=0.05 with SIGMA_0 = 1 for v1.0).
+    SIM_DEFAULTS = {"surface_layer": True, "subgrid_wind": True, "K_rel": 0.01}
 
     # ------------------------------------------------------------------
     # Mobile source — exact OU
@@ -287,7 +291,7 @@ class GaussianPuffEnv(gym.Env):
         enable_turbulence, enable_gusts, steady_wind, shear_exponent, use_los).
         """
         super().__init__()
-        self._sim_kwargs = dict(sim_kwargs)
+        self._sim_kwargs = {**self.SIM_DEFAULTS, **sim_kwargs}
         self._anemo_ss = np.zeros(3)
         grid = np.array([NX, NY, NZ]) * FLUID_DX
         if not np.allclose(self.DOMAIN_MAX, grid) or not np.allclose(self.DOMAIN_MIN, 0.0):
