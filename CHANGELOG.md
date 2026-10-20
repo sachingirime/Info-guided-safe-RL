@@ -19,6 +19,8 @@ Evidence for every change is in `bench/RESULTS_v11.md`.
 | Env anemometer | Resolved + independent OU (σ = LSM σ, τ = 1 s) | Resolved + `coherent_velocity()` (shared eddies, Taylor-lagged) + local small-scale OU (σ_i(z), T_i(z)) | Field σ_θ 11–32°: v1.0 gave 1.4–6.3°, v1.1 gives 13–26°. Wind changes now predict plume meander |
 | `wind_noise_tau` env argument | τ of the anemometer noise | Removed | Superseded |
 | `HybridFluidPuffSimulation` defaults | — | Unchanged (v1.0 behaviour unless `surface_layer=True`); `GaussianPuffEnv.SIM_DEFAULTS` selects v1.1 | Reproducibility of v1.0 results; v1.0 path verified bit-identical |
+| Concentration query | Loop over all puffs | Hash grid over puff centres, radius 4√3·σ_max (`use_hash_query=True`); equal to the loop to 3e-7 | V7 at 10240 puffs: 2.63 → 0.94 ms per step (35× real time) |
+| `meander_frac` | — | Optional coherent neutral/stable meander, default 0 | Tested and rejected by a pre-registered rule (Prairie Grass worse; sensor direction time scale 5 → 10 s only) |
 | Tests | — | `tests/test_sl_lsm.py`: well-mixed criterion with a negative control, variances, met. Updated: `test_anemometer_coherent` (was `test_anemometer_noise`), `test_calm_wind` (active model's turbulence floor) | Behaviour changed by design; intent kept |
 
 **Known limitations** (`bench/RESULTS_v11.md`):
@@ -26,7 +28,7 @@ Evidence for every change is in `bench/RESULTS_v11.md`.
 - E–F σ_z wide at short range;
 - no slow meander in neutral air (direction time scale 5 s vs 37 s);
 - far-field blanks too long;
-- 13× real time with queries (v1.0: 47×).
+- 35× real time with a 1-point query (v1.0: 34×).
 
 ## v1.0-sim (branch `sim-fix`, from tag `pre-fix` = `1d30cdb`)
 

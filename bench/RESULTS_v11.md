@@ -158,10 +158,30 @@ Source at 10 m, U₁₀ = 3 m/s, 3600 s averages. **v1.1 fails the v1.0 band (0.
 
 **Simulator transfer gaps** remain significant in 7 of 12 off-diagonal cells.
 
+## Final round: faster query and neutral meander (2026-10-19)
+
+**Hash-grid query.** Sensor queries visit only the puffs within 4√3·σ_max (an exact bound from the ring-buffer age and from injected puffs).
+- **Correctness:** equal to the full loop to 3×10⁻⁷ relative (`tests/test_query_hash.py`).
+- **Speed:** at 10240 puffs, one query per step drops from 2.63 ms to **0.94 ms per step (35× real time)**. A 1000-point query takes 1.26 ms (26×).
+
+**Neutral/stable meander (`meander_frac`).** This option moves a fraction of the mechanical lateral variance into a coherent shared-eddy component (T_E = 60 s).
+
+The pre-registered rule: adopt f ∈ {0.3, 0.6} only if Prairie Grass E2 is no more than 0.05 worse than f = 0, σ_y MG stays ≥ 0.7, and the sensor direction time scale improves.
+
+| f | σ_y MG | arc-max MG | arc-max FAC2 | E2 | High-wind direction time scale |
+|---|---|---|---|---|---|
+| 0 (v1.1) | 0.81 | 1.50 | 0.70 | 0.46 | 5 s |
+| 0.3 | 0.65 | 1.85 | 0.53 | 0.70 | 5 s |
+| 0.6 | 0.58 | 2.09 | 0.38 | — | 10 s (data 37 s) |
+
+Single seed, all 64 runs.
+
+**Rejected:** `meander_frac` stays 0. The neutral direction-time-scale gap remains open.
+
 ## V5 and V7
 
 - **V5:** v1.1 is deterministic: the same seed gives identical positions, velocities and queries, and a different seed differs.
-- **V7:** 0.72 ms per step without queries (46× real time). With one query per step: 1.3 ms at 2560 puffs and 2.6 ms at the env's 10240 (RTF 12.7×; v1.0 47×).
+- **V7 (before the hash-grid query; see the final round above):** 0.72 ms per step without queries (46× real time). With one query per step: 1.3 ms at 2560 puffs and 2.6 ms at the env's 10240 (RTF 12.7×; v1.0 47×).
   - The query loops over all puffs.
   - That works out to about 125 env steps/s per environment.
   - A spatial hash in the query kernel is the obvious speed-up if RL throughput matters.
@@ -198,4 +218,4 @@ Source at 10 m, U₁₀ = 3 m/s, 3600 s averages. **v1.1 fails the v1.0 band (0.
   - z₀ = 0.03 m assumed for the env.
 - **T3 assumptions:** source and sensor at 1.5 m, and a steady mean wind.
 - **Obstacles:** no flow or dispersion validation; the domain's 4 m cells cannot resolve standard obstacle datasets.
-- **RL throughput:** about 3.7× lower than v1.0.
+- **RL throughput:** with the hash-grid query, 35× real time with a 1-point query, about the same as v1.0 (34×), despite 4× as many puffs.

@@ -104,7 +104,7 @@ Validation summary, v1.1 (the env defaults; `bench/RESULTS_v11.md`, `validation/
 - **Prairie Grass** (64 runs, measured met, nothing fitted to it): FAC2 0.85 for arc-max C/Q, 1.00 for CWIC/Q and 0.98 for σ_y.
 - **Outdoor whiff timing:** 2–2.4× closer to field data than v1.0.
 - **Sensor wind:** σ_θ 13–26° (field 11–32°).
-- **Speed:** 13× real time with a query per step.
+- **Speed:** 35× real time with a query per step (hash-grid query).
 
 v1.0 (`HybridFluidPuffSimulation` defaults, Briggs-fitted): V1 analytic plume within 5%; V3 within ×[0.76, 1.49] of Briggs D; 30–47× real time (`validation/results.json`).
 
