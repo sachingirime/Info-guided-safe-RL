@@ -9,8 +9,8 @@ realtime_viz.py — Paper-quality RL episode visualisation.
 Paper figures (headless, offscreen):
     python realtime_viz.py --headless          # writes figures/sim_3d_render.png,
                                                # sim_2d_conc.{png,pdf}, sim_2d_wind.{png,pdf}
-Capture time is env time; reset() already advanced WARMUP_S = 60 s, so the
-default --capture 60 is 120 s of sim time.
+Capture time is env time; reset() already advanced WARMUP_S (120 s), so the
+default --capture 60 is 180 s of sim time.
 """
 
 import os
@@ -503,8 +503,8 @@ if __name__ == "__main__":
     parser.add_argument("--no-wind",   action="store_true", default=False)
     parser.add_argument("--no-slice",  action="store_true", default=False)
     parser.add_argument("--capture",   type=float, default=60.0,
-                        help="Env time (s) to capture figures; reset() already ran WARMUP_S=60 s, "
-                             "so 60 → 120 s of sim time")
+                        help="Env time (s) to capture figures; reset() already ran WARMUP_S (120 s), "
+                             "so 60 → 180 s of sim time")
     parser.add_argument("--headless",  action="store_true", default=False,
                         help="Offscreen render, save figures at --capture and exit")
     args = parser.parse_args()

@@ -106,6 +106,8 @@ Validation summary, v1.1 (the env defaults; `bench/RESULTS_v11.md`, `validation/
 - **Sensor wind:** σ_θ 13–26° (field 11–32°).
 - **Speed:** 35× real time with a query per step (hash-grid query).
 
+**Scope:** the validation covers open terrain. Obstacles are unvalidated geometry: they give occlusion, line of sight and RL safety constraints. The inviscid 4 m wind solver gives only qualitative wakes.
+
 v1.0 (`HybridFluidPuffSimulation` defaults, Briggs-fitted): V1 analytic plume within 5%; V3 within ×[0.76, 1.49] of Briggs D; 30–47× real time (`validation/results.json`).
 
 ```bash
